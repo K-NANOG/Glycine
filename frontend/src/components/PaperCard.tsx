@@ -1,76 +1,179 @@
 import React from 'react';
+import {
+    Card,
+    CardContent,
+    Typography,
+    Chip,
+    Box,
+    Link,
+    Tooltip,
+    IconButton,
+    Stack,
+} from '@mui/material';
+import { styled } from '@mui/material/styles';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
+import LocalOfferIcon from '@mui/icons-material/LocalOffer';
+import PersonIcon from '@mui/icons-material/Person';
+import ArticleIcon from '@mui/icons-material/Article';
 
 interface Paper {
     title: string;
     abstract: string;
     authors: string[];
     doi: string;
-    metrics?: {
-        citationCount?: number;
-        impactFactor?: number;
-        altmetricScore?: number;
-    };
-    metadata?: {
-        journal?: string;
-        volume?: string;
-        issue?: string;
-        publisher?: string;
-    };
+    pmid?: string;
+    url: string;
+    publicationDate?: Date;
+    journal?: string;
+    keywords?: string[];
+    categories?: string[];
 }
 
-interface PaperCardProps {
-    paper: Paper;
-}
+const StyledCard = styled(Card)(({ theme }) => ({
+    height: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    transition: 'transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out',
+    '&:hover': {
+        transform: 'translateY(-4px)',
+        boxShadow: theme.shadows[4],
+    },
+}));
 
-export const PaperCard: React.FC<PaperCardProps> = ({ paper }) => {
+const TruncatedTypography = styled(Typography)({
+    display: '-webkit-box',
+    WebkitLineClamp: 3,
+    WebkitBoxOrient: 'vertical',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+});
+
+const PaperCard: React.FC<{ paper: Paper }> = ({ paper }) => {
     return (
-        <div className="group backdrop-blur-xl bg-white/[0.03] rounded-xl p-6 border border-white/[0.08] hover:border-white/[0.16] transition-all duration-300 hover:shadow-2xl hover:shadow-white/5">
-            <div className="relative overflow-hidden">
-                <h2 className="text-xl font-medium text-white/90 mb-3 line-clamp-2 group-hover:text-white transition-all duration-300">
-                    {paper.title}
-                </h2>
-                <div className="flex flex-wrap gap-2 mb-4">
-                    {paper.metadata?.journal && (
-                        <span className="backdrop-blur-md bg-white/[0.03] text-white/70 px-3 py-1 rounded-full text-sm border border-white/[0.08] group-hover:border-white/[0.16] transition-all duration-300">
-                            {paper.metadata.journal}
-                        </span>
-                    )}
-                    {paper.metrics?.impactFactor && (
-                        <span className="backdrop-blur-md bg-white/[0.03] text-white/70 px-3 py-1 rounded-full text-sm border border-white/[0.08] group-hover:border-white/[0.16] transition-all duration-300">
-                            IF: {paper.metrics.impactFactor.toFixed(1)}
-                        </span>
-                    )}
-                    {paper.metrics?.citationCount && (
-                        <span className="backdrop-blur-md bg-white/[0.03] text-white/70 px-3 py-1 rounded-full text-sm border border-white/[0.08] group-hover:border-white/[0.16] transition-all duration-300">
-                            Citations: {paper.metrics.citationCount}
-                        </span>
-                    )}
-                </div>
-                <p className="text-white/60 mb-6 line-clamp-3 group-hover:text-white/80 transition-colors duration-300">
-                    {paper.abstract}
-                </p>
-                <div className="absolute inset-0 bg-gradient-to-br from-white/[0.02] to-white/[0.01] opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-            </div>
-            <div className="border-t border-white/[0.08] pt-4 mt-auto">
-                <p className="text-sm text-white/50 mb-3 group-hover:text-white/70 transition-colors duration-300">
-                    {paper.authors.join(', ')}
-                </p>
-                <div className="flex justify-between items-center">
-                    <a
-                        href={`https://doi.org/${paper.doi}`}
+        <StyledCard>
+            <CardContent>
+                <Box sx={{ mb: 2 }}>
+                    <Link
+                        href={paper.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-white/70 hover:text-white text-sm transition-colors duration-300 hover:underline decoration-white/30"
+                        underline="hover"
+                        sx={{
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            color: 'primary.main',
+                            fontWeight: 'medium',
+                            mb: 1,
+                        }}
                     >
-                        {paper.doi}
-                    </a>
-                    {paper.metadata?.publisher && (
-                        <span className="text-sm text-white/50 group-hover:text-white/70 transition-colors duration-300">
-                            {paper.metadata.publisher}
-                        </span>
-                    )}
-                </div>
-            </div>
-        </div>
+                        <Typography variant="h6" component="h2">
+                            {paper.title}
+                        </Typography>
+                        <OpenInNewIcon sx={{ ml: 1, fontSize: 'small' }} />
+                    </Link>
+
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                        {paper.journal && (
+                            <Tooltip title="Journal">
+                                <Chip
+                                    icon={<ArticleIcon />}
+                                    label={paper.journal}
+                                    size="small"
+                                    color="primary"
+                                    variant="outlined"
+                                />
+                            </Tooltip>
+                        )}
+                        {paper.publicationDate && (
+                            <Tooltip title="Publication Date">
+                                <Chip
+                                    icon={<CalendarTodayIcon />}
+                                    label={new Date(paper.publicationDate).toLocaleDateString()}
+                                    size="small"
+                                    variant="outlined"
+                                />
+                            </Tooltip>
+                        )}
+                    </Stack>
+                </Box>
+
+                <TruncatedTypography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    {paper.abstract}
+                </TruncatedTypography>
+
+                <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                        <PersonIcon sx={{ mr: 1, fontSize: 'small' }} />
+                        Authors:
+                    </Typography>
+                    <Typography variant="body2">
+                        {paper.authors.join(', ')}
+                    </Typography>
+                </Box>
+
+                {(paper.keywords?.length > 0 || paper.categories?.length > 0) && (
+                    <Box sx={{ mb: 2 }}>
+                        <Typography variant="subtitle2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                            <LocalOfferIcon sx={{ mr: 1, fontSize: 'small' }} />
+                            Keywords & Categories:
+                        </Typography>
+                        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                            {paper.keywords?.map((keyword, index) => (
+                                <Chip
+                                    key={`keyword-${index}`}
+                                    label={keyword}
+                                    size="small"
+                                    color="secondary"
+                                    variant="outlined"
+                                />
+                            ))}
+                            {paper.categories?.map((category, index) => (
+                                <Chip
+                                    key={`category-${index}`}
+                                    label={category}
+                                    size="small"
+                                    color="info"
+                                    variant="outlined"
+                                />
+                            ))}
+                        </Stack>
+                    </Box>
+                )}
+
+                <Box sx={{ mt: 'auto', pt: 2, borderTop: 1, borderColor: 'divider' }}>
+                    <Stack direction="row" spacing={2} justifyContent="flex-start">
+                        {paper.doi && (
+                            <Tooltip title="DOI">
+                                <Link
+                                    href={`https://doi.org/${paper.doi}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    color="text.secondary"
+                                    underline="hover"
+                                >
+                                    DOI: {paper.doi}
+                                </Link>
+                            </Tooltip>
+                        )}
+                        {paper.pmid && (
+                            <Tooltip title="PubMed ID">
+                                <Link
+                                    href={`https://pubmed.ncbi.nlm.nih.gov/${paper.pmid}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    color="text.secondary"
+                                    underline="hover"
+                                >
+                                    PMID: {paper.pmid}
+                                </Link>
+                            </Tooltip>
+                        )}
+                    </Stack>
+                </Box>
+            </CardContent>
+        </StyledCard>
     );
-}; 
+};
+
+export default PaperCard; 

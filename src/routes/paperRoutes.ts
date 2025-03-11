@@ -7,18 +7,19 @@ const router = Router();
 // Initialize routes
 const initializeRoutes = async () => {
     try {
-        // Wait for database connection
-        if (!AppDataSource.isInitialized) {
-            await AppDataSource.initialize();
-            console.log("Database connection initialized");
-        }
-
         // Initialize the crawler
         await PaperController.initializeCrawler();
         console.log("Paper crawler initialized");
 
         // Register routes with bound methods
-        router.post('/crawl/start', (req, res) => PaperController.startCrawling(req, res));
+        router.post('/crawl', (req, res) => PaperController.startCrawling(req, res));
+        router.post('/crawl/custom', (req, res) => PaperController.startCustomCrawling(req, res));
+        router.post('/crawl/stop', (req, res) => PaperController.stopCrawling(req, res));
+        router.get('/crawl/status', (req, res) => {
+            const status = PaperController.getCrawlerStatus();
+            res.json(status);
+        });
+        router.post('/database/drop', (req, res) => PaperController.dropDatabase(req, res));
         router.get('/papers', (req, res) => PaperController.getPapers(req, res));
         router.get('/papers/search', (req, res) => PaperController.searchPapers(req, res));
         router.get('/papers/:id', (req, res) => PaperController.getPaperById(req, res));
@@ -31,7 +32,7 @@ const initializeRoutes = async () => {
     }
 };
 
-// Initialize routes but don't block router export
+// Initialize routes immediately
 initializeRoutes().catch(console.error);
 
 export default router; 

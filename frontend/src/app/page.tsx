@@ -1,14 +1,16 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { PaperCard } from '../components/PaperCard';
+import PaperCard from '../components/PaperCard';
 import { StatsOverview } from '../components/StatsOverview';
+import { CrawlerControls, CrawlOptions } from '../components/CrawlerControls';
 
 interface Paper {
     title: string;
     abstract: string;
     authors: string[];
     doi: string;
+    url: string;
     metrics?: {
         citationCount?: number;
         impactFactor?: number;
@@ -64,6 +66,8 @@ export default function Home() {
     const [stats, setStats] = useState<Stats | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [crawling, setCrawling] = useState<boolean>(false);
+    const [logs, setLogs] = useState<string[]>([]);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -114,6 +118,143 @@ export default function Home() {
         fetchData();
     }, []);
 
+    // Add a handler for starting the crawler
+    const handleStartCrawling = async (options: CrawlOptions) => {
+        setCrawling(true);
+        try {
+            const response = await fetch(`${API_BASE_URL}/crawl/custom`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    paperCount: options.maxPapers,
+                    sources: options.sources
+                }),
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            console.log('Crawling started:', data);
+            setLogs(prev => [...prev, `[${new Date().toISOString()}] Crawling started with options: ${JSON.stringify(options)}`]);
+            
+            // Poll for new papers every 10 seconds
+            const pollInterval = setInterval(async () => {
+                try {
+                    const statusResponse = await fetch(`${API_BASE_URL}/crawl/status`);
+                    if (!statusResponse.ok) {
+                        throw new Error(`HTTP error! status: ${statusResponse.status}`);
+                    }
+                    
+                    const statusData = await statusResponse.json();
+                    if (!statusData.isRunning) {
+                        clearInterval(pollInterval);
+                        setCrawling(false);
+                        await fetchPapers(); // Final fetch
+                        return;
+                    }
+                    
+                    // Only fetch papers if we have new ones
+                    if (statusData.papersFound > papers.length) {
+                        await fetchPapers();
+                    }
+                } catch (error) {
+                    console.error('Error polling status:', error);
+                }
+            }, 10000);
+
+            // Safety timeout after 10 minutes
+            setTimeout(() => {
+                clearInterval(pollInterval);
+                setCrawling(false);
+            }, 600000);
+            
+            return data;
+        } catch (err) {
+            console.error('Error starting crawler:', err);
+            setCrawling(false);
+            throw err;
+        }
+    };
+
+    const handleStopCrawling = async () => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/crawl/stop`, {
+                method: 'POST',
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            console.log('Crawling stopped:', data);
+            setLogs(prev => [...prev, `[${new Date().toISOString()}] Crawling stopped`]);
+            setCrawling(false);
+            
+            // Fetch final state
+            await fetchPapers();
+            
+            return data;
+        } catch (err) {
+            console.error('Error stopping crawler:', err);
+            throw err;
+        }
+    };
+
+    const handleDropDatabase = async () => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/database/drop`, {
+                method: 'POST',
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            console.log('Database dropped:', data);
+            setLogs(prev => [...prev, `[${new Date().toISOString()}] Database dropped`]);
+            
+            // Clear papers and stats
+            setPapers([]);
+            setStats(null);
+            
+            return data;
+        } catch (err) {
+            console.error('Error dropping database:', err);
+            throw err;
+        }
+    };
+
+    // Function to fetch papers
+    const fetchPapers = async () => {
+        try {
+            const papersResponse = await fetchWithRetry(`${API_BASE_URL}/papers`);
+            const papersData = await papersResponse.json() as Paper[];
+            
+            if (!Array.isArray(papersData)) {
+                throw new Error('Invalid papers data received');
+            }
+            
+            setPapers(papersData);
+            setLogs(prev => [...prev, `[${new Date().toISOString()}] Fetched ${papersData.length} papers`]);
+            
+            // Also update stats
+            const statsResponse = await fetchWithRetry(`${API_BASE_URL}/stats`);
+            const statsData = await statsResponse.json() as Stats;
+            setStats(statsData);
+            
+            console.log('Fetched papers:', papersData);
+        } catch (err) {
+            console.error('Error fetching papers:', err);
+            setLogs(prev => [...prev, `[${new Date().toISOString()}] Error fetching papers: ${err instanceof Error ? err.message : 'Unknown error'}`]);
+        }
+    };
+
     if (loading) {
         return (
             <div className="min-h-screen bg-zinc-950 text-white py-8">
@@ -155,7 +296,7 @@ export default function Home() {
         <div className="min-h-screen bg-zinc-950 text-white py-8">
             <div className="fixed inset-0 bg-gradient-to-br from-white/[0.03] to-white/[0.05] pointer-events-none" />
             <div className="container mx-auto px-4 relative">
-                <header className="mb-16 text-center">
+                <header className="mb-8 text-center">
                     <div className="inline-block">
                         <h1 className="text-6xl font-bold mb-4 text-transparent bg-clip-text bg-gradient-to-b from-white to-white/60 animate-gradient">
                             Glycine
@@ -168,9 +309,22 @@ export default function Home() {
                     </p>
                 </header>
 
+                <CrawlerControls 
+                    onStartCrawling={handleStartCrawling}
+                    onStopCrawling={handleStopCrawling}
+                    onDropDatabase={handleDropDatabase}
+                    isLoading={loading}
+                    isCrawling={crawling}
+                />
+
                 {stats && <StatsOverview stats={stats} />}
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-16">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
+                    {papers.length === 0 && !loading && (
+                        <div className="col-span-full text-center p-8 backdrop-blur-xl bg-white/[0.03] rounded-xl border border-white/[0.08]">
+                            <p className="text-white/60">No papers found. Start crawling to fetch papers!</p>
+                        </div>
+                    )}
                     {papers.map((paper, index) => (
                         <div key={paper.doi || index} className="opacity-0 animate-fade-in" style={{ animationDelay: `${index * 150}ms` }}>
                             <PaperCard paper={paper} />

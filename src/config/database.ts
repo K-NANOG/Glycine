@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import { Paper } from '../models/Paper';
 import { MongoConnectionOptions } from 'typeorm/driver/mongodb/MongoConnectionOptions';
+import { delay } from '../utils/delay';
 
 const config: MongoConnectionOptions = {
     type: 'mongodb',
@@ -9,14 +10,13 @@ const config: MongoConnectionOptions = {
     port: 27017,
     database: 'glycine',
     synchronize: true,
-    logging: true,
+    logging: ['error', 'warn'],
     logger: 'advanced-console',
     entities: [Paper],
     useUnifiedTopology: true,
-    connectTimeoutMS: 10000,
+    connectTimeoutMS: 30000,
     retryWrites: true,
     w: 'majority',
-    authSource: 'admin',
     directConnection: true
 };
 
@@ -29,11 +29,35 @@ export const initializeDatabase = async () => {
         try {
             console.log("Initializing database connection...");
             
-            // Initialize the connection
-            if (!AppDataSource.isInitialized) {
-                await AppDataSource.initialize();
-                console.log("Database connection established");
+            // Try to connect with retries
+            let retries = 5;
+            while (retries > 0) {
+                try {
+                    // Initialize the connection without synchronizing
+                    if (!AppDataSource.isInitialized) {
+                        await AppDataSource.initialize();
+                    }
+                    console.log("Database connection established");
+                    break;
+                } catch (error) {
+                    retries--;
+                    if (retries === 0) throw error;
+                    console.log(`Failed to connect, retrying... (${retries} attempts left)`);
+                    await delay(2000); // Wait 2 seconds before retrying
+                }
             }
+
+            // Drop the database completely
+            try {
+                await AppDataSource.dropDatabase();
+                console.log("Dropped existing database");
+            } catch (error) {
+                console.log("No existing database to drop or error dropping database:", error);
+            }
+
+            // Create new database and sync schema
+            await AppDataSource.synchronize(true);
+            console.log("Database schema synchronized");
 
             // Log registered entities
             const registeredEntities = AppDataSource.entityMetadatas;
@@ -87,4 +111,14 @@ export const initializeDatabase = async () => {
         }
     }
     return AppDataSource;
-}; 
+};
+
+// Initialize database connection
+initializeDatabase()
+    .then(() => {
+        console.log("Database initialized successfully");
+    })
+    .catch(error => {
+        console.error("Failed to initialize database:", error);
+        process.exit(1);
+    }); 

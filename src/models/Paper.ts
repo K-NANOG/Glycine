@@ -1,32 +1,37 @@
-import { Entity, ObjectIdColumn, Column, CreateDateColumn, UpdateDateColumn, Index, ObjectId } from 'typeorm';
+import { Entity, ObjectIdColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
+import { ObjectId } from 'mongodb';
 
 @Entity('papers')
 export class Paper {
     @ObjectIdColumn()
-    _id!: ObjectId;
+    _id: ObjectId;
 
     @Column()
-    @Index()
-    title!: string;
+    @Index('paper_title_idx')
+    title: string;
 
     @Column()
-    abstract!: string;
+    abstract: string;
 
     @Column('simple-array')
-    authors!: string[];
+    authors: string[];
+
+    @Column({ nullable: true })
+    @Index('paper_pmid_idx', { sparse: true })
+    pmid?: string;
+
+    @Column({ nullable: true })
+    @Index('paper_doi_idx', { sparse: true })
+    doi?: string;
+
+    @Column('simple-array', { nullable: true })
+    keywords?: string[];
+
+    @Column({ type: 'timestamp', nullable: true })
+    publicationDate?: Date;
 
     @Column()
-    @Index({ unique: true })
-    doi!: string;
-
-    @Column('simple-array')
-    keywords!: string[];
-
-    @Column()
-    publicationDate!: Date;
-
-    @Column()
-    url!: string;
+    url: string;
 
     @Column({ nullable: true })
     pdfUrl?: string;
@@ -38,8 +43,8 @@ export class Paper {
         altmetricScore?: number;
     };
 
-    @Column('simple-array')
-    categories!: string[];
+    @Column('simple-array', { nullable: true })
+    categories?: string[];
 
     @Column({ nullable: true })
     fullText?: string;
@@ -53,18 +58,18 @@ export class Paper {
     };
 
     @CreateDateColumn()
-    createdAt!: Date;
+    createdAt: Date;
 
     @UpdateDateColumn()
-    updatedAt!: Date;
+    updatedAt: Date;
 
-    @Column()
-    isProcessed!: boolean;
+    @Column({ default: false })
+    isProcessed: boolean;
 
     @Column('simple-array', { nullable: true })
     references?: string[];
 
-    constructor(partial?: Partial<Paper>) {
+    constructor(partial: Partial<Paper>) {
         if (partial) {
             Object.assign(this, {
                 ...partial,

@@ -1,11 +1,16 @@
 import "reflect-metadata";
 import express from "express";
 import cors from "cors";
-import { initializeDatabase } from "./config/database";
+import { AppDataSource, initializeDatabase } from "./config/database";
 import paperRoutes from "./routes/paperRoutes";
+import crawlerRoutes, { initializeWebSocket } from "./routes/crawlerRoutes";
+import { createServer } from "http";
 
 const app = express();
 const port = process.env.PORT || 3002;
+
+// Create HTTP server
+const server = createServer(app);
 
 // Configure CORS
 app.use(cors({
@@ -14,44 +19,77 @@ app.use(cors({
     allowedHeaders: ["Content-Type", "Authorization"]
 }));
 
+// Initialize WebSocket server
+initializeWebSocket(server);
+
 // Middleware
 app.use(express.json());
 
 // Test route
-app.get("/test", (req, res) => {
-    res.json({ message: "Backend is working!" });
+app.get("/test", (_req, res) => {
+    res.json({ status: "ok", message: "Server is running" });
 });
 
 // Initialize database and start server
 const startServer = async () => {
     try {
-        // Initialize database first
-        const dataSource = await initializeDatabase();
-        console.log("Database initialized");
+        // Initialize database connection
+        console.log("Initializing database connection...");
+        await initializeDatabase();
+        console.log("Database connection initialized");
 
-        // Log registered entities
-        const registeredEntities = dataSource.entityMetadatas;
-        console.log("Registered entities:", registeredEntities.map(e => ({
-            name: e.name,
-            tableName: e.tableName,
-            columns: e.columns.map(c => c.propertyName)
-        })));
-
-        // Register routes after database is initialized
+        // Register routes
         app.use("/api", paperRoutes);
-        console.log("Routes registered");
+        app.use("/api/crawler", crawlerRoutes);
+
+        // Error handling middleware
+        app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+            console.error('Error:', err);
+            res.status(500).json({
+                error: 'Internal Server Error',
+                message: err.message
+            });
+        });
 
         // Start server
-        app.listen(port, () => {
+        server.listen(port, () => {
             console.log(`Server is running on port ${port}`);
             console.log(`Test endpoint: http://localhost:${port}/test`);
             console.log(`API endpoint: http://localhost:${port}/api`);
         });
+
+        // Handle server errors
+        server.on('error', (error: NodeJS.ErrnoException) => {
+            console.error('Server error:', error);
+            if (error.code === 'EADDRINUSE') {
+                console.error(`Port ${port} is already in use`);
+            }
+            process.exit(1);
+        });
+
     } catch (error) {
         console.error("Failed to start server:", error);
+        if (error instanceof Error) {
+            console.error("Error details:", error.message);
+            console.error("Stack trace:", error.stack);
+        }
         process.exit(1);
     }
 };
+
+// Handle process termination
+process.on('SIGINT', async () => {
+    try {
+        if (AppDataSource.isInitialized) {
+            await AppDataSource.destroy();
+            console.log('Database connection closed.');
+        }
+        process.exit(0);
+    } catch (error) {
+        console.error('Error during shutdown:', error);
+        process.exit(1);
+    }
+});
 
 // Start server
 startServer(); 
