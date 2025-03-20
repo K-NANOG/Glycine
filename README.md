@@ -2,156 +2,94 @@
 
 A dynamically reconfigurable web crawler for scientific papers, powered by advanced pattern matching and machine learning.
 
-## Core Features
+## Features
 
-- **Dynamic Pattern Recognition**: Automatically identifies and adapts to different scientific paper formats and structures
-- **Configurable Crawling Rules**: Define custom patterns, selectors, and extraction rules for different sources
-- **Intelligent Data Extraction**: Uses machine learning to improve accuracy in metadata extraction
-- **Multi-Source Support**: Crawl from multiple scientific databases (arXiv, PubMed, etc.)
-- **Pattern Learning**: Improves extraction accuracy over time through pattern recognition
-- **Real-time Monitoring**: Track crawling progress and success rates
-- **Modern Interface**: Sleek dark-themed UI for monitoring and configuration
+- Multi-source paper crawling (PubMed, arXiv)
+- Real-time crawling status and controls
+- Elegant, modern UI with dark mode
+- Advanced paper filtering and categorization
+- Automatic metadata extraction
+- MongoDB integration for data persistence
 
-## Technology Stack
+## Tech Stack
 
-- **Backend**: Node.js + TypeScript + Express
-- **Frontend**: Next.js + TailwindCSS
+- **Backend**: Node.js, Express, TypeScript, Puppeteer
+- **Frontend**: Next.js, React, TailwindCSS
 - **Database**: MongoDB
-- **Pattern Matching**: Puppeteer + Custom ML models
-- **API**: RESTful with TypeORM
+- **Libraries**: date-fns, TypeORM
 
-## Project Structure
+## Prerequisites
 
-```
-glycine/
-├── src/                    # Backend source code
-│   ├── config/            # Configuration and database setup
-│   ├── controllers/       # API and crawler controllers
-│   ├── models/           # Database models
-│   ├── routes/           # API routes
-│   └── services/         # Crawler and pattern matching services
-├── frontend/              # Next.js frontend
-└── start-dev.ps1         # Development startup script
-```
+- Node.js (v16 or higher)
+- MongoDB (v4.4 or higher)
+- Git
 
-## Crawler Configuration
+## Installation
 
-The crawler can be configured through JSON patterns:
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/yourusername/Glycine.git
+   cd Glycine
+   ```
 
-```json
-{
-    "sources": [
-        {
-            "name": "arXiv",
-            "url": "https://arxiv.org/list/q-bio/recent",
-            "selectors": {
-                "title": "h2.title",
-                "abstract": ".abstract",
-                "authors": ".authors",
-                "doi": ".doi"
-            },
-            "patterns": {
-                "title": "\\[([^\\]]+)\\]",
-                "doi": "\\b(10\\.\\d{4,}/[-._;()/:A-Z0-9]+)\\b",
-                "date": "\\d{4}\\.\\d{2}"
-            }
-        }
-    ],
-    "filters": {
-        "dateRange": {
-            "start": "2023-01-01",
-            "end": "2024-12-31"
-        },
-        "keywords": ["machine learning", "biology"],
-        "categories": ["q-bio", "cs.AI"]
-    }
-}
-```
+2. Install backend dependencies:
+   ```bash
+   npm install
+   ```
 
-## API Documentation
+3. Install frontend dependencies:
+   ```bash
+   cd frontend
+   npm install
+   ```
 
-### Base URL
-```
-http://localhost:3002/api
-```
-
-### Key Endpoints
-
-#### Configure Crawler
-```
-POST /api/crawler/config
-```
-Update crawler configuration dynamically.
-
-#### Start Crawler
-```
-POST /api/crawl/start
-```
-Start the crawling process with current configuration.
-
-#### Get Papers
-```
-GET /api/papers
-```
-Get crawled papers with pagination and filtering.
-
-#### Search Papers
-```
-GET /api/papers/search
-```
-Search papers with advanced filters.
-
-#### Get Statistics
-```
-GET /api/stats
-```
-Get crawling and paper statistics.
+4. Create MongoDB data directory:
+   ```bash
+   mkdir -p C:\data\db
+   ```
 
 ## Development
 
-### Prerequisites
+1. Start all services (MongoDB, backend, frontend):
+   ```bash
+   ./start-dev.ps1
+   ```
 
-- Node.js (v14 or later)
-- MongoDB (v4.4 or later)
-- npm or yarn
-- PowerShell (for Windows users)
+   Or start services individually:
 
-### Installation
+   ```bash
+   # Start MongoDB
+   mongod --dbpath C:\data\db
 
-1. Clone and install dependencies:
-```bash
-git clone https://github.com/yourusername/glycine.git
-cd glycine
-npm install
-cd frontend && npm install
-```
+   # Start backend (in a new terminal)
+   npm run dev
 
-2. Configure environment:
-```env
-PORT=3002
-MONGODB_URL=mongodb://localhost:27017/glycine
-NODE_ENV=development
-```
+   # Start frontend (in a new terminal)
+   cd frontend
+   npm run dev
+   ```
 
-### Starting Development Environment
+2. Access the application:
+   - Frontend: http://localhost:3001
+   - Backend API: http://localhost:3002
+   - API Documentation: http://localhost:3002/api
 
-```powershell
-.\start-dev.ps1
-```
+## Usage
 
-This script will:
-1. Start MongoDB
-2. Launch the backend (port 3002)
-3. Start the frontend (port 3001)
+1. Select paper sources (PubMed, arXiv)
+2. Set the number of papers to crawl
+3. Click "Start Crawler" to begin collection
+4. Monitor progress in real-time
+5. View collected papers in the main interface
+
+## License
+
+MIT
 
 ## Contributing
 
 1. Fork the repository
-2. Create your feature branch
-3. Commit your changes
-4. Push to the branch
-5. Open a Pull Request
-
-## License
-
-MIT License - see LICENSE file for details
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request 

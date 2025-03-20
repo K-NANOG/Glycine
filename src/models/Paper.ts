@@ -4,25 +4,21 @@ import { ObjectId } from 'mongodb';
 @Entity('papers')
 export class Paper {
     @ObjectIdColumn()
-    _id: ObjectId;
+    _id!: ObjectId;
 
     @Column()
-    @Index('paper_title_idx')
-    title: string;
+    @Index("IDX_PAPER_TITLE")
+    title!: string;
 
     @Column()
-    abstract: string;
+    abstract!: string;
 
     @Column('simple-array')
-    authors: string[];
+    authors!: string[];
 
-    @Column({ nullable: true })
-    @Index('paper_pmid_idx', { sparse: true })
-    pmid?: string;
-
-    @Column({ nullable: true })
-    @Index('paper_doi_idx', { sparse: true })
-    doi?: string;
+    @Column()
+    @Index("IDX_PAPER_DOI", { unique: true, sparse: true })
+    doi!: string;
 
     @Column('simple-array', { nullable: true })
     keywords?: string[];
@@ -31,7 +27,7 @@ export class Paper {
     publicationDate?: Date;
 
     @Column()
-    url: string;
+    url!: string;
 
     @Column({ nullable: true })
     pdfUrl?: string;
@@ -55,31 +51,49 @@ export class Paper {
         volume?: string;
         issue?: string;
         publisher?: string;
+        doi?: string;
     };
 
     @CreateDateColumn()
-    createdAt: Date;
+    createdAt!: Date;
 
     @UpdateDateColumn()
-    updatedAt: Date;
+    updatedAt!: Date;
 
     @Column({ default: false })
-    isProcessed: boolean;
+    isProcessed!: boolean;
 
     @Column('simple-array', { nullable: true })
     references?: string[];
 
-    constructor(partial: Partial<Paper>) {
+    constructor(partial?: Partial<Paper>) {
         if (partial) {
-            Object.assign(this, {
-                ...partial,
-                isProcessed: partial.isProcessed ?? false,
-                keywords: partial.keywords ?? [],
-                categories: partial.categories ?? [],
-                references: partial.references ?? [],
-                createdAt: partial.createdAt ?? new Date(),
-                updatedAt: partial.updatedAt ?? new Date()
-            });
+            // Handle _id separately
+            if (partial._id) {
+                this._id = partial._id;
+            }
+            
+            // Required fields with defaults
+            this.title = partial.title || '';
+            this.abstract = partial.abstract || '';
+            this.authors = partial.authors || [];
+            this.doi = partial.doi || '';
+            this.url = partial.url || '';
+            
+            // Optional fields
+            this.keywords = partial.keywords || [];
+            this.categories = partial.categories || [];
+            this.references = partial.references || [];
+            this.publicationDate = partial.publicationDate;
+            this.pdfUrl = partial.pdfUrl;
+            this.metrics = partial.metrics;
+            this.fullText = partial.fullText;
+            this.metadata = partial.metadata;
+            
+            // Status fields
+            this.isProcessed = partial.isProcessed ?? false;
+            this.createdAt = partial.createdAt || new Date();
+            this.updatedAt = partial.updatedAt || new Date();
         }
     }
 

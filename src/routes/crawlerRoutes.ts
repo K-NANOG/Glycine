@@ -1,42 +1,10 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { PaperCrawler } from '../services/PaperCrawler';
 import { Paper } from '../models/Paper';
 import { AppDataSource } from '../config/database';
-import WebSocket from 'ws';
-import { Server } from 'http';
 
 const router = Router();
 let activeCrawler: PaperCrawler | null = null;
-let wss: WebSocket.Server | null = null;
-
-export function initializeWebSocket(server: Server) {
-    wss = new WebSocket.Server({ server });
-    
-    wss.on('connection', (ws) => {
-        console.log('New WebSocket client connected');
-        
-        ws.on('error', console.error);
-        
-        // Send initial status if crawler is active
-        if (activeCrawler) {
-            ws.send(JSON.stringify({
-                type: 'status',
-                data: activeCrawler.getStatus()
-            }));
-        }
-    });
-}
-
-function broadcastMessage(message: any) {
-    if (wss) {
-        wss.clients.forEach((client) => {
-            if (client.readyState === WebSocket.OPEN) {
-                client.send(JSON.stringify(message));
-            }
-        });
-    }
-}
-
 let crawlerStatus = {
     isRunning: false,
     currentSource: '',
@@ -46,12 +14,39 @@ let crawlerStatus = {
     totalPages: 0
 };
 
-router.post('/start', async (req, res) => {
+// Add reset database route
+const resetHandler = async (_req: Request, res: Response): Promise<void> => {
     try {
         if (crawlerStatus.isRunning) {
-            return res.status(400).json({ error: 'Crawler is already running' });
+            res.status(400).json({ error: 'Cannot reset database while crawler is running' });
+            return;
         }
 
+        // Ensure database connection is initialized
+        if (!AppDataSource.isInitialized) {
+            await AppDataSource.initialize();
+        }
+
+        // Drop all papers
+        const paperRepository = AppDataSource.getRepository(Paper);
+        await paperRepository.clear();
+
+        res.json({ message: 'Database reset successfully' });
+    } catch (error) {
+        console.error('Error resetting database:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Failed to reset database';
+        res.status(500).json({ error: errorMessage });
+    }
+};
+
+const startHandler = async (req: Request, res: Response): Promise<void> => {
+    try {
+        if (crawlerStatus.isRunning) {
+            res.status(400).json({ error: 'Crawler is already running' });
+            return;
+        }
+
+        // Ensure database connection is initialized
         if (!AppDataSource.isInitialized) {
             await AppDataSource.initialize();
         }
@@ -66,70 +61,60 @@ router.post('/start', async (req, res) => {
                     : 'https://pubmed.ncbi.nlm.nih.gov/?term=(synthetic+biology+OR+machine+learning+OR+bioinformatics)&sort=date&size=100',
                 selectors: {
                     title: name === 'arXiv' 
-                        ? 'p.title' 
+                        ? '.title' 
                         : 'a.docsum-title',
                     abstract: name === 'arXiv' 
-                        ? 'span.abstract-full' 
+                        ? '.abstract-full' 
                         : 'div.full-view-snippet',
                     authors: name === 'arXiv' 
-                        ? 'div.authors' 
+                        ? '.authors' 
                         : 'span.docsum-authors',
-                    pmid: name === 'arXiv'
-                        ? null
+                    doi: name === 'arXiv' 
+                        ? '.list-title' 
                         : 'span.docsum-pmid',
-                    doi: name === 'arXiv'
-                        ? 'span.arxiv-id'
-                        : 'span.doi',
                     date: name === 'arXiv' 
-                        ? 'div.submission-history' 
+                        ? '.submitted-date' 
                         : 'span.docsum-journal-citation',
                     categories: name === 'arXiv' 
-                        ? 'div.subjects' 
+                        ? '.primary-subject' 
                         : 'div.docsum-subjects',
                     keywords: name === 'arXiv' 
-                        ? 'div.subjects' 
+                        ? '.subjects' 
                         : 'div.keywords',
                     nextPage: name === 'arXiv'
-                        ? 'a.pagination-next'
+                        ? '.pagination-next'
                         : 'a.next-page',
                     articleContainer: name === 'arXiv'
-                        ? 'li.arxiv-result'
+                        ? '.arxiv-result'
                         : 'article.full-docsum',
                     url: name === 'arXiv'
-                        ? 'p.title a'
+                        ? 'a.list-title'
                         : 'a.docsum-title'
                 },
                 patterns: {
                     title: null,
-                    pmid: name === 'arXiv'
-                        ? null
-                        : 'PMID:\\s*(\\d+)',
                     doi: name === 'arXiv'
                         ? 'arXiv:([\\d\\.v]+)'
-                        : 'doi:\\s*([\\d\\.\\/-]+[\\w-]+)',
+                        : 'PMID:\\s*(\\d+)',
                     date: name === 'arXiv'
                         ? 'Submitted\\s+([^\\s]+)'
                         : '(\\d{4})\\s+[A-Za-z]+'
                 },
+                rateLimit: name === 'arXiv' ? 1 : 2,
+                maxPages: 10,
                 extraHeaders: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-                    'Accept-Language': 'en-US,en;q=0.9',
-                    'Accept-Encoding': 'gzip, deflate, br',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
                     'Connection': 'keep-alive',
-                    'Cache-Control': 'max-age=0',
-                    'Sec-Ch-Ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
-                    'Sec-Ch-Ua-Mobile': '?0',
-                    'Sec-Ch-Ua-Platform': '"Windows"',
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache',
+                    'Upgrade-Insecure-Requests': '1',
                     'Sec-Fetch-Dest': 'document',
                     'Sec-Fetch-Mode': 'navigate',
                     'Sec-Fetch-Site': 'none',
-                    'Sec-Fetch-User': '?1',
-                    'Upgrade-Insecure-Requests': '1'
-                },
-                rateLimit: name === 'arXiv' ? 1 : 1,
-                maxPages: 20,
-                maxPapers: maxPapers * 2
+                    'Sec-Fetch-User': '?1'
+                }
             })),
             filters: {
                 keywords: ['synthetic biology', 'machine learning', 'bioinformatics', 'computational biology'],
@@ -137,21 +122,14 @@ router.post('/start', async (req, res) => {
             },
             retryOptions: {
                 maxRetries: 3,
-                delayMs: 5000
+                delayMs: 10000
             },
-            maxPapers: maxPapers * 2
+            maxPapers: maxPapers * 2,
+            selectedSources: sources
         };
 
         const paperRepository = AppDataSource.getRepository(Paper);
         activeCrawler = new PaperCrawler(paperRepository, config);
-
-        // Set up event listeners for the crawler
-        activeCrawler.on('log', (logData) => {
-            broadcastMessage({
-                type: 'log',
-                data: logData
-            });
-        });
 
         // Reset crawler status
         crawlerStatus = {
@@ -167,51 +145,50 @@ router.post('/start', async (req, res) => {
         activeCrawler.crawl()
             .then(() => {
                 crawlerStatus.isRunning = false;
-                broadcastMessage({
-                    type: 'status',
-                    data: { ...crawlerStatus, message: 'Crawling completed successfully' }
-                });
+                console.log('Crawling completed successfully');
             })
             .catch(error => {
                 console.error('Crawler error:', error);
                 crawlerStatus.lastError = error.message;
                 crawlerStatus.isRunning = false;
-                broadcastMessage({
-                    type: 'status',
-                    data: { ...crawlerStatus, message: 'Crawler error: ' + error.message }
-                });
             });
 
-        return res.json({ message: 'Crawler started', status: crawlerStatus });
+        res.json({ message: 'Crawler started', status: crawlerStatus });
     } catch (error) {
         console.error('Error starting crawler:', error);
         const errorMessage = error instanceof Error ? error.message : 'Failed to start crawler';
         crawlerStatus.lastError = errorMessage;
-        return res.status(500).json({ error: errorMessage });
+        res.status(500).json({ error: errorMessage });
     }
-});
+};
 
-router.post('/stop', async (_req, res) => {
+const stopHandler = async (_req: Request, res: Response): Promise<void> => {
     try {
         if (!activeCrawler) {
-            return res.status(400).json({ error: 'No active crawler' });
+            res.status(400).json({ error: 'No active crawler' });
+            return;
         }
 
         await activeCrawler.close();
         activeCrawler = null;
         crawlerStatus.isRunning = false;
 
-        return res.json({ message: 'Crawler stopped', status: crawlerStatus });
+        res.json({ message: 'Crawler stopped', status: crawlerStatus });
     } catch (error) {
         console.error('Error stopping crawler:', error);
         const errorMessage = error instanceof Error ? error.message : 'Failed to stop crawler';
         crawlerStatus.lastError = errorMessage;
-        return res.status(500).json({ error: errorMessage });
+        res.status(500).json({ error: errorMessage });
     }
-});
+};
 
-router.get('/status', (_req, res) => {
-    return res.json(crawlerStatus);
-});
+const statusHandler = (_req: Request, res: Response): void => {
+    res.json(crawlerStatus);
+};
+
+router.post('/reset', resetHandler);
+router.post('/start', startHandler);
+router.post('/stop', stopHandler);
+router.get('/status', statusHandler);
 
 export default router; 

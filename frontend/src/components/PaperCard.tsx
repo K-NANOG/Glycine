@@ -1,179 +1,192 @@
-import React from 'react';
-import {
-    Card,
-    CardContent,
-    Typography,
-    Chip,
-    Box,
-    Link,
-    Tooltip,
-    IconButton,
-    Stack,
-} from '@mui/material';
-import { styled } from '@mui/material/styles';
-import OpenInNewIcon from '@mui/icons-material/OpenInNew';
-import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
-import LocalOfferIcon from '@mui/icons-material/LocalOffer';
-import PersonIcon from '@mui/icons-material/Person';
-import ArticleIcon from '@mui/icons-material/Article';
+import { useState } from 'react';
+import { format, isValid, parseISO } from 'date-fns';
 
 interface Paper {
     title: string;
     abstract: string;
     authors: string[];
     doi: string;
-    pmid?: string;
-    url: string;
-    publicationDate?: Date;
-    journal?: string;
-    keywords?: string[];
+    publicationDate?: Date | string;
     categories?: string[];
+    keywords?: string[];
+    url: string;
+    metrics?: {
+        citationCount?: number;
+        impactFactor?: number;
+        altmetricScore?: number;
+    };
+    metadata?: {
+        doi?: string;
+    };
 }
 
-const StyledCard = styled(Card)(({ theme }) => ({
-    height: '100%',
-    display: 'flex',
-    flexDirection: 'column',
-    transition: 'transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out',
-    '&:hover': {
-        transform: 'translateY(-4px)',
-        boxShadow: theme.shadows[4],
-    },
-}));
+interface PaperCardProps {
+    paper: Paper;
+}
 
-const TruncatedTypography = styled(Typography)({
-    display: '-webkit-box',
-    WebkitLineClamp: 3,
-    WebkitBoxOrient: 'vertical',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-});
+const MAX_VISIBLE_AUTHORS = 3;
 
-const PaperCard: React.FC<{ paper: Paper }> = ({ paper }) => {
+export function PaperCard({ paper }: PaperCardProps) {
+    const [expanded, setExpanded] = useState(false);
+    const [showAllAuthors, setShowAllAuthors] = useState(false);
+
+    const formatDate = (date: Date | string | undefined): string => {
+        if (!date) return '';
+        
+        try {
+            let dateObj: Date;
+            if (typeof date === 'string') {
+                // Try parsing ISO string first
+                dateObj = parseISO(date);
+                if (!isValid(dateObj)) {
+                    // If not valid, try creating a new Date object
+                    dateObj = new Date(date);
+                }
+            } else {
+                dateObj = date;
+            }
+
+            if (!isValid(dateObj)) {
+                return '';
+            }
+
+            return format(dateObj, 'MMM d, yyyy');
+        } catch (error) {
+            console.error('Error formatting date:', error);
+            return '';
+        }
+    };
+
+    const getISODate = (date: Date | string | undefined): string => {
+        if (!date) return '';
+        
+        try {
+            let dateObj: Date;
+            if (typeof date === 'string') {
+                dateObj = parseISO(date);
+                if (!isValid(dateObj)) {
+                    dateObj = new Date(date);
+                }
+            } else {
+                dateObj = date;
+            }
+
+            if (!isValid(dateObj)) {
+                return '';
+            }
+
+            return dateObj.toISOString();
+        } catch (error) {
+            console.error('Error getting ISO date:', error);
+            return '';
+        }
+    };
+
+    const displayedAuthors = showAllAuthors ? paper.authors : paper.authors.slice(0, MAX_VISIBLE_AUTHORS);
+    const hasMoreAuthors = paper.authors.length > MAX_VISIBLE_AUTHORS;
+
+    const renderAuthors = () => (
+        <div className="flex flex-wrap gap-2 items-center">
+            <span className="text-sm text-white/40">Authors:</span>
+            <div className="flex flex-wrap gap-2 items-center">
+                {displayedAuthors.map((author, index) => (
+                    <a 
+                        key={index}
+                        href={`https://scholar.google.com/scholar?q=author:"${encodeURIComponent(author)}"`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-white/60 bg-white/[0.05] px-2 py-1 rounded hover:bg-white/[0.08] hover:text-blue-400 transition-all"
+                    >
+                        {author}
+                    </a>
+                ))}
+                {!showAllAuthors && hasMoreAuthors && (
+                    <button
+                        onClick={() => setShowAllAuthors(true)}
+                        className="text-sm text-blue-400 hover:text-blue-300 transition-colors px-2 py-1 rounded bg-white/[0.05] hover:bg-white/[0.08]"
+                    >
+                        +{paper.authors.length - MAX_VISIBLE_AUTHORS} more...
+                    </button>
+                )}
+                {showAllAuthors && hasMoreAuthors && (
+                    <button
+                        onClick={() => setShowAllAuthors(false)}
+                        className="text-sm text-blue-400 hover:text-blue-300 transition-colors px-2 py-1 rounded bg-white/[0.05] hover:bg-white/[0.08]"
+                    >
+                        Show less
+                    </button>
+                )}
+            </div>
+        </div>
+    );
+
     return (
-        <StyledCard>
-            <CardContent>
-                <Box sx={{ mb: 2 }}>
-                    <Link
+        <div className="bg-white/[0.02] backdrop-blur-xl rounded-lg border border-white/[0.05] h-full transition-all duration-300 hover:bg-white/[0.03] hover:border-white/[0.08]">
+            <div className="p-6 flex flex-col h-full">
+                <div className="flex items-start justify-between gap-4 mb-4">
+                    <h2 className="text-lg font-light text-white leading-tight">
+                        <a 
+                            href={paper.url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="hover:text-white/90 transition-colors duration-300"
+                        >
+                            {paper.title}
+                        </a>
+                    </h2>
+                    <a 
                         href={paper.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        underline="hover"
-                        sx={{
-                            display: 'flex',
-                            alignItems: 'flex-start',
-                            color: 'primary.main',
-                            fontWeight: 'medium',
-                            mb: 1,
-                        }}
+                        className="text-white/20 hover:text-white/60 transition-colors duration-300"
                     >
-                        <Typography variant="h6" component="h2">
-                            {paper.title}
-                        </Typography>
-                        <OpenInNewIcon sx={{ ml: 1, fontSize: 'small' }} />
-                    </Link>
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                    </a>
+                </div>
 
-                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
-                        {paper.journal && (
-                            <Tooltip title="Journal">
-                                <Chip
-                                    icon={<ArticleIcon />}
-                                    label={paper.journal}
-                                    size="small"
-                                    color="primary"
-                                    variant="outlined"
-                                />
-                            </Tooltip>
-                        )}
-                        {paper.publicationDate && (
-                            <Tooltip title="Publication Date">
-                                <Chip
-                                    icon={<CalendarTodayIcon />}
-                                    label={new Date(paper.publicationDate).toLocaleDateString()}
-                                    size="small"
-                                    variant="outlined"
-                                />
-                            </Tooltip>
-                        )}
-                    </Stack>
-                </Box>
-
-                <TruncatedTypography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                <p className="text-sm text-white/40 mb-4 line-clamp-3 font-light">
                     {paper.abstract}
-                </TruncatedTypography>
+                </p>
 
-                <Box sx={{ mb: 2 }}>
-                    <Typography variant="subtitle2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                        <PersonIcon sx={{ mr: 1, fontSize: 'small' }} />
-                        Authors:
-                    </Typography>
-                    <Typography variant="body2">
-                        {paper.authors.join(', ')}
-                    </Typography>
-                </Box>
+                <div className="mt-auto space-y-3 text-sm">
+                    <div className="flex flex-wrap gap-1">
+                        {paper.authors.map((author, index) => (
+                            <span 
+                                key={index} 
+                                className="text-white/60 font-light"
+                            >
+                                {author}{index < paper.authors.length - 1 ? ',' : ''}
+                            </span>
+                        ))}
+                    </div>
 
-                {(paper.keywords?.length > 0 || paper.categories?.length > 0) && (
-                    <Box sx={{ mb: 2 }}>
-                        <Typography variant="subtitle2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                            <LocalOfferIcon sx={{ mr: 1, fontSize: 'small' }} />
-                            Keywords & Categories:
-                        </Typography>
-                        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                            {paper.keywords?.map((keyword, index) => (
-                                <Chip
-                                    key={`keyword-${index}`}
-                                    label={keyword}
-                                    size="small"
-                                    color="secondary"
-                                    variant="outlined"
-                                />
+                    {paper.categories && paper.categories.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                            {paper.categories.map((category, index) => (
+                                <span 
+                                    key={index}
+                                    className="px-2 py-1 rounded-md bg-white/5 text-white/40 text-xs font-light"
+                                >
+                                    {category}
+                                </span>
                             ))}
-                            {paper.categories?.map((category, index) => (
-                                <Chip
-                                    key={`category-${index}`}
-                                    label={category}
-                                    size="small"
-                                    color="info"
-                                    variant="outlined"
-                                />
-                            ))}
-                        </Stack>
-                    </Box>
-                )}
+                        </div>
+                    )}
 
-                <Box sx={{ mt: 'auto', pt: 2, borderTop: 1, borderColor: 'divider' }}>
-                    <Stack direction="row" spacing={2} justifyContent="flex-start">
+                    <div className="flex items-center gap-4 text-white/30 font-light">
                         {paper.doi && (
-                            <Tooltip title="DOI">
-                                <Link
-                                    href={`https://doi.org/${paper.doi}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    color="text.secondary"
-                                    underline="hover"
-                                >
-                                    DOI: {paper.doi}
-                                </Link>
-                            </Tooltip>
+                            <span>DOI: {paper.doi}</span>
                         )}
-                        {paper.pmid && (
-                            <Tooltip title="PubMed ID">
-                                <Link
-                                    href={`https://pubmed.ncbi.nlm.nih.gov/${paper.pmid}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    color="text.secondary"
-                                    underline="hover"
-                                >
-                                    PMID: {paper.pmid}
-                                </Link>
-                            </Tooltip>
+                        {paper.publicationDate && getISODate(paper.publicationDate) && (
+                            <time dateTime={getISODate(paper.publicationDate)}>
+                                {formatDate(paper.publicationDate)}
+                            </time>
                         )}
-                    </Stack>
-                </Box>
-            </CardContent>
-        </StyledCard>
+                    </div>
+                </div>
+            </div>
+        </div>
     );
-};
-
-export default PaperCard; 
+} 

@@ -1,31 +1,20 @@
 {
   "compilerOptions": {
-    "target": "es2018",
+    "target": "es6",
     "module": "commonjs",
-    "lib": ["es2018", "esnext.asynciterable", "dom"],
-    "skipLibCheck": true,
-    "sourceMap": true,
+    "lib": ["es6", "dom", "dom.iterable"],
+    "allowJs": true,
     "outDir": "./dist",
-    "moduleResolution": "node",
-    "removeComments": true,
+    "rootDir": "./src",
+    "strict": true,
     "noImplicitAny": true,
-    "strictNullChecks": true,
-    "strictFunctionTypes": true,
-    "noImplicitThis": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noImplicitReturns": true,
-    "noFallthroughCasesInSwitch": true,
-    "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
-    "emitDecoratorMetadata": true,
-    "experimentalDecorators": true,
     "resolveJsonModule": true,
-    "baseUrl": ".",
-    "paths": {
-      "*": ["node_modules/*"]
-    },
-    "typeRoots": ["./node_modules/@types"]
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "moduleResolution": "node"
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]

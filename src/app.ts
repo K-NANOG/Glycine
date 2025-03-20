@@ -2,15 +2,11 @@ import "reflect-metadata";
 import express from "express";
 import cors from "cors";
 import { AppDataSource, initializeDatabase } from "./config/database";
-import paperRoutes from "./routes/paperRoutes";
-import crawlerRoutes, { initializeWebSocket } from "./routes/crawlerRoutes";
-import { createServer } from "http";
+import paperRoutes, { initializeRoutes } from "./routes/paperRoutes";
+import crawlerRoutes from "./routes/crawlerRoutes";
 
 const app = express();
 const port = process.env.PORT || 3002;
-
-// Create HTTP server
-const server = createServer(app);
 
 // Configure CORS
 app.use(cors({
@@ -18,9 +14,6 @@ app.use(cors({
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"]
 }));
-
-// Initialize WebSocket server
-initializeWebSocket(server);
 
 // Middleware
 app.use(express.json());
@@ -38,6 +31,11 @@ const startServer = async () => {
         await initializeDatabase();
         console.log("Database connection initialized");
 
+        // Initialize routes
+        console.log("Initializing routes...");
+        await initializeRoutes();
+        console.log("Routes initialized");
+
         // Register routes
         app.use("/api", paperRoutes);
         app.use("/api/crawler", crawlerRoutes);
@@ -52,10 +50,11 @@ const startServer = async () => {
         });
 
         // Start server
-        server.listen(port, () => {
+        const server = app.listen(port, () => {
             console.log(`Server is running on port ${port}`);
             console.log(`Test endpoint: http://localhost:${port}/test`);
             console.log(`API endpoint: http://localhost:${port}/api`);
+            console.log(`Crawler endpoint: http://localhost:${port}/api/crawler`);
         });
 
         // Handle server errors

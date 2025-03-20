@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { PaperController } from '../controllers/PaperController';
 import { AppDataSource } from '../config/database';
 
@@ -7,23 +7,48 @@ const router = Router();
 // Initialize routes
 const initializeRoutes = async () => {
     try {
+        // Wait for database connection
+        if (!AppDataSource.isInitialized) {
+            await AppDataSource.initialize();
+            console.log("Database connection initialized");
+        }
+
         // Initialize the crawler
         await PaperController.initializeCrawler();
         console.log("Paper crawler initialized");
 
+        // Create route handlers
+        const startCrawlingHandler = async (req: Request, res: Response): Promise<void> => {
+            await PaperController.startCrawling(req, res);
+        };
+
+        const getPapersHandler = async (req: Request, res: Response): Promise<void> => {
+            await PaperController.getPapers(req, res);
+        };
+
+        const searchPapersHandler = async (req: Request, res: Response): Promise<void> => {
+            await PaperController.searchPapers(req, res);
+        };
+
+        const getPaperByIdHandler = async (req: Request, res: Response): Promise<void> => {
+            await PaperController.getPaperById(req, res);
+        };
+
+        const getStatsHandler = async (req: Request, res: Response): Promise<void> => {
+            await PaperController.getStats(req, res);
+        };
+
+        const getCategoriesHandler = async (req: Request, res: Response): Promise<void> => {
+            await PaperController.getCategories(req, res);
+        };
+
         // Register routes with bound methods
-        router.post('/crawl', (req, res) => PaperController.startCrawling(req, res));
-        router.post('/crawl/custom', (req, res) => PaperController.startCustomCrawling(req, res));
-        router.post('/crawl/stop', (req, res) => PaperController.stopCrawling(req, res));
-        router.get('/crawl/status', (req, res) => {
-            const status = PaperController.getCrawlerStatus();
-            res.json(status);
-        });
-        router.post('/database/drop', (req, res) => PaperController.dropDatabase(req, res));
-        router.get('/papers', (req, res) => PaperController.getPapers(req, res));
-        router.get('/papers/search', (req, res) => PaperController.searchPapers(req, res));
-        router.get('/papers/:id', (req, res) => PaperController.getPaperById(req, res));
-        router.get('/stats', (req, res) => PaperController.getStats(req, res));
+        router.post('/crawl/start', startCrawlingHandler);
+        router.get('/papers', getPapersHandler);
+        router.get('/papers/search', searchPapersHandler);
+        router.get('/papers/:id', getPaperByIdHandler);
+        router.get('/stats', getStatsHandler);
+        router.get('/categories', getCategoriesHandler);
 
         console.log("Paper routes registered");
     } catch (error) {
@@ -32,7 +57,5 @@ const initializeRoutes = async () => {
     }
 };
 
-// Initialize routes immediately
-initializeRoutes().catch(console.error);
-
-export default router; 
+export default router;
+export { initializeRoutes }; 

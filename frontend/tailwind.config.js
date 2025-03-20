@@ -7,32 +7,39 @@ module.exports = {
   ],
   theme: {
     extend: {
-      animation: {
-        'fade-in': 'fadeIn 0.5s ease-out forwards',
-        'scale-x': 'scaleX 0.5s ease-out forwards',
-        'gradient': 'gradient 8s linear infinite',
-        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-        'spin-slow': 'spin 2s linear infinite',
+      fontFamily: {
+        sans: ['var(--font-inter)', 'system-ui', 'sans-serif'],
       },
-      keyframes: {
-        fadeIn: {
-          '0%': { opacity: '0', transform: 'translateY(10px)' },
-          '100%': { opacity: '1', transform: 'translateY(0)' },
+      colors: {
+        glass: {
+          DEFAULT: 'rgba(255, 255, 255, 0.02)',
+          hover: 'rgba(255, 255, 255, 0.03)',
         },
-        scaleX: {
-          '0%': { transform: 'scaleX(0)' },
-          '100%': { transform: 'scaleX(1)' },
+        black: {
+          DEFAULT: '#000000',
+          soft: '#0a0a0a',
         },
-        gradient: {
-          '0%, 100%': {
-            'background-size': '200% 200%',
-            'background-position': 'left center',
-          },
-          '50%': {
-            'background-size': '200% 200%',
-            'background-position': 'right center',
-          },
-        },
+      },
+      animation: {
+        'fade-in': 'fadeIn 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards',
+        'scale-x': 'scaleX 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards',
+        'gradient': 'gradient 6s ease infinite',
+      },
+      backdropBlur: {
+        'xs': '2px',
+      },
+      letterSpacing: {
+        'tightest': '-0.04em',
+        'tighter': '-0.03em',
+        'tight': '-0.02em',
+      },
+      fontWeight: {
+        thin: '200',
+        light: '300',
+        normal: '400',
+      },
+      backgroundImage: {
+        'gradient-radial': 'radial-gradient(circle at top, var(--tw-gradient-stops))',
       },
     },
   },
