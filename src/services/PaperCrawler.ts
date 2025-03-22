@@ -73,6 +73,7 @@ export class PaperCrawler {
     private reconnectAttempts = 0;
     private readonly maxReconnectAttempts = 3;
     private readonly reconnectDelay = 5000;
+    private papersProcessed: Set<string> = new Set();
     
     constructor(
         private readonly paperRepository: Repository<Paper>,
@@ -146,22 +147,31 @@ export class PaperCrawler {
     }
 
     private async setupPage(browser: Browser, source: SourceConfig): Promise<Page> {
-        this.page = await browser.newPage();
+        const page = await browser.newPage();
         
         // Set extra headers if provided
         if (source.extraHeaders) {
-            await this.page.setExtraHTTPHeaders(source.extraHeaders);
+            await page.setExtraHTTPHeaders(source.extraHeaders);
         }
 
         // Set reasonable viewport and timeout
-        await this.page.setViewport({ width: 1920, height: 1080 });
-        this.page.setDefaultTimeout(60000); // Increased timeout
+        await page.setViewport({ width: 1920, height: 1080 });
+        page.setDefaultTimeout(60000); // Increased timeout
+
+        // Set PubMed-specific cookie
+        if (source.name === 'PubMed' || source.url.includes('pubmed.ncbi.nlm.nih.gov')) {
+            await page.setCookie({
+                name: 'ncbi_sid',
+                value: Date.now().toString(),
+                domain: '.ncbi.nlm.nih.gov'
+            });
+        }
 
         // Enable request interception
-        await this.page.setRequestInterception(true);
+        await page.setRequestInterception(true);
 
         // Handle requests
-        this.page.on('request', async (request) => {
+        page.on('request', async (request) => {
             const resourceType = request.resourceType();
             const url = request.url();
 
@@ -171,7 +181,14 @@ export class PaperCrawler {
                 resourceType === 'xhr' ||
                 resourceType === 'fetch' ||
                 resourceType === 'script' ||
-                (resourceType === 'stylesheet' && (url.includes('arxiv.org') || url.includes('pubmed.ncbi.nlm.nih.gov')))
+                (resourceType === 'stylesheet' && (
+                    url.includes('pubmed.ncbi.nlm.nih.gov') || 
+                    url.includes('ncbi.nlm.nih.gov')
+                )) ||
+                (resourceType === 'image' && (
+                    url.includes('pubmed.ncbi.nlm.nih.gov') || 
+                    url.includes('ncbi.nlm.nih.gov')
+                ))
             ) {
                 try {
                     await request.continue();
@@ -188,31 +205,27 @@ export class PaperCrawler {
         });
 
         // Handle page errors
-        this.page.on('error', error => {
+        page.on('error', error => {
             console.error('Page error:', error);
         });
 
         // Handle console messages
-        this.page.on('console', msg => {
-            console.log('Page console:', msg.text());
+        page.on('console', msg => {
+            const msgType = msg.type();
+            if (msgType === 'error') {
+                console.log(`Page error:`, msg.text());
+            } else if (['warning', 'log', 'info'].includes(msgType)) {
+                console.log(`Page ${msgType}:`, msg.text());
+            }
         });
 
-        return this.page;
+        return page;
     }
 
-    private async crawlSource(page: Page, source: CrawlerConfig['sources'][0]): Promise<ExtractedData[]> {
+    private async crawlSource(page: Page, source: SourceConfig): Promise<ExtractedData[]> {
         console.log(`Navigating to ${source.url}`);
         
         try {
-            // Set cookies if needed
-            if (source.name === 'PubMed') {
-                await page.setCookie({
-                    name: 'ncbi_sid',
-                    value: Date.now().toString(),
-                    domain: '.ncbi.nlm.nih.gov'
-                });
-            }
-
             // Navigate to the page with increased timeout
             await page.goto(source.url, { 
                 waitUntil: ['networkidle0', 'domcontentloaded'],
@@ -224,10 +237,7 @@ export class PaperCrawler {
 
             // Wait for the article container with increased timeout
             try {
-                await page.waitForSelector(source.selectors.articleContainer, { 
-                    timeout: 60000,
-                    visible: true 
-                });
+                await this.waitForSelector(page, source.selectors.articleContainer, 60000, true);
             } catch (error) {
                 console.log(`No articles found for ${source.name} at ${source.url}`);
                 const content = await page.content();
@@ -249,24 +259,8 @@ export class PaperCrawler {
                 return [];
             }
 
-            // Special handling for arXiv
-            if (source.name === 'arXiv') {
-                // Wait for specific arXiv elements
-                await Promise.all([
-                    page.waitForSelector('.title', { timeout: 30000 }).catch(() => console.log('Title selector not found')),
-                    page.waitForSelector('.abstract', { timeout: 30000 }).catch(() => console.log('Abstract selector not found')),
-                    page.waitForSelector('.authors', { timeout: 30000 }).catch(() => console.log('Authors selector not found'))
-                ]);
-            }
-
             const papers = await this.extractPapers(page, source);
             console.log(`Found ${papers.length} papers on current page`);
-            
-            if (papers.length === 0) {
-                console.log(`No valid papers extracted from ${source.name} at ${source.url}`);
-                const content = await page.content();
-                console.log('Page content:', content.substring(0, 1000) + '...');
-            }
             
             return papers;
         } catch (error) {
@@ -276,154 +270,141 @@ export class PaperCrawler {
     }
 
     private async extractPapers(page: Page, source: SourceConfig): Promise<ExtractedData[]> {
-        return page.evaluate((config) => {
-            const { selectors, patterns } = config;
-            const papers: ExtractedData[] = [];
-            
-            const extractText = (element: Element | null, selector: string): string | null => {
-                if (!element || !selector) return null;
-                const found = element.querySelector(selector);
-                return found?.textContent?.trim() || null;
-            };
-
-            const extractUrl = (element: Element | null, selector: string): string | null => {
-                if (!element || !selector) return null;
-                const found = element.querySelector(selector);
-                if (!found) return null;
-                const href = found.getAttribute('href');
-                if (!href) return null;
-                return href.startsWith('http') ? href : new URL(href, window.location.origin).toString();
-            };
-
-            const applyPattern = (text: string | null, pattern: string | undefined): string | null => {
-                if (!text || !pattern) return text;
-                const match = text.match(new RegExp(pattern));
-                return match ? match[1] : text;
-            };
-
-            // Special handling for arXiv
-            if (window.location.href.includes('arxiv.org')) {
-                const articles = document.querySelectorAll('li.arxiv-result');
-                articles.forEach((article: Element) => {
+        try {
+            return await page.evaluate((selectors, patterns) => {
+                const papers: ExtractedData[] = [];
+                const articles = document.querySelectorAll(selectors.articleContainer);
+                console.log(`Found ${articles.length} article elements`);
+                
+                // Helper function to extract text content
+                function extractText(article: Element, selector: string): string {
+                    const el = article.querySelector(selector);
+                    return el?.textContent?.trim() || '';
+                }
+                
+                // Helper function to extract URL
+                function extractUrl(article: Element, selector: string): string {
+                    const el = article.querySelector(selector) as HTMLAnchorElement;
+                    if (!el || !el.href) return '';
+                    return el.href;
+                }
+                
+                // Helper function to apply pattern
+                function applyPattern(text: string, pattern?: string | null): string {
+                    if (!text || !pattern) return text;
                     try {
-                        const title = article.querySelector('.title')?.textContent?.trim();
-                        const abstract = article.querySelector('.abstract-full')?.textContent?.trim();
-                        const authorText = article.querySelector('.authors')?.textContent?.trim();
-                        const authors = authorText?.split(',').map((a: string) => a.trim()) || [];
-                        const doiElement = article.querySelector('.list-title')?.textContent?.trim();
-                        const doi = doiElement?.match(/arXiv:(.*)/)?.[1] || '';
-                        const url = extractUrl(article, selectors.url);
+                        const regex = new RegExp(pattern);
+                        const match = text.match(regex);
+                        return match && match[1] ? match[1] : text;
+                    } catch (e) {
+                        console.error('Pattern matching error:', e);
+                        return text;
+                    }
+                }
+                
+                Array.from(articles).forEach((article, index) => {
+                    try {
+                        // Extract basic data
+                        const title = extractText(article, selectors.title);
+                        const abstract = extractText(article, selectors.abstract);
+                        const authorText = extractText(article, selectors.authors);
+                        const authors = authorText.split(',').map(a => a.trim()).filter(Boolean);
                         
-                        if (title && abstract && authors.length > 0 && doi && url) {
+                        const doiText = extractText(article, selectors.doi);
+                        const doi = applyPattern(doiText, patterns?.doi);
+                        
+                        let url = extractUrl(article, selectors.url);
+                        // Ensure URL is absolute
+                        if (!url && doi) {
+                            url = `https://pubmed.ncbi.nlm.nih.gov/${doi}/`;
+                        }
+                        
+                        // Extract date if available
+                        let publicationDate: Date | undefined;
+                        if (selectors.date) {
+                            const dateText = extractText(article, selectors.date);
+                            if (dateText) {
+                                const yearMatch = dateText.match(patterns?.date || '\\b(\\d{4})\\b');
+                                if (yearMatch && yearMatch[1]) {
+                                    publicationDate = new Date(yearMatch[1]);
+                                }
+                            }
+                        }
+                        
+                        // Extract keywords and categories if available
+                        const keywords = selectors.keywords ? 
+                            extractText(article, selectors.keywords).split(',').map(k => k.trim()).filter(Boolean) : 
+                            [];
+                            
+                        const categories = selectors.categories ?
+                            extractText(article, selectors.categories).split(',').map(c => c.trim()).filter(Boolean) :
+                            [];
+                        
+                        // Validate required fields
+                        if (title && (doi || url)) {
                             papers.push({
                                 title,
-                                abstract,
+                                abstract: abstract || 'Abstract not available',
                                 authors,
-                                doi: `arXiv:${doi}`,
-                                url,
-                                publicationDate: new Date(),
-                                categories: [],
-                                keywords: []
+                                doi: doi || `unknown-${Date.now()}-${index}`,
+                                publicationDate,
+                                keywords,
+                                categories,
+                                url: url || `https://pubmed.ncbi.nlm.nih.gov/`
                             });
                         }
                     } catch (error) {
-                        console.error('Error extracting arXiv paper data:', error);
+                        console.error(`Error extracting paper data:`, error);
                     }
                 });
+                
                 return papers;
-            }
-
-            // Default extraction logic for other sources
-            const articles = document.querySelectorAll(selectors.articleContainer);
-            console.log(`Found ${articles.length} article elements`);
-
-            articles.forEach((article: Element) => {
-                try {
-                    const rawTitle = extractText(article, selectors.title);
-                    const title = patterns?.title ? applyPattern(rawTitle, patterns.title) : rawTitle;
-                    
-                    const abstract = extractText(article, selectors.abstract);
-                    const rawAuthors = extractText(article, selectors.authors);
-                    const authors = rawAuthors?.split(',').map(a => a.trim()) || [];
-                    
-                    const rawDoi = extractText(article, selectors.doi);
-                    const doi = applyPattern(rawDoi, patterns?.doi);
-
-                    const rawDate = extractText(article, selectors.date || '');
-                    const dateStr = applyPattern(rawDate, patterns?.date);
-                    const publicationDate = dateStr ? new Date(dateStr) : undefined;
-
-                    const keywords = selectors.keywords ? 
-                        extractText(article, selectors.keywords)?.split(',').map(k => k.trim()) :
-                        undefined;
-
-                    const categories = selectors.categories ?
-                        extractText(article, selectors.categories)?.split(',').map(c => c.trim()) :
-                        undefined;
-
-                    const url = extractUrl(article, selectors.url);
-
-                    if (title && abstract && authors.length > 0 && doi && url) {
-                        papers.push({
-                            title,
-                            abstract,
-                            authors,
-                            doi,
-                            publicationDate,
-                            keywords,
-                            categories,
-                            url
-                        });
-                    }
-                } catch (error) {
-                    console.error('Error extracting paper data:', error);
-                }
-            });
-
-            return papers;
-        }, { selectors: source.selectors, patterns: source.patterns });
+            }, source.selectors, source.patterns);
+        } catch (error) {
+            console.error('Error in extractPapers:', error);
+            return [];
+        }
     }
 
-    private async getNextPageUrl(page: Page, source: CrawlerConfig['sources'][0], currentPage: number): Promise<string | null> {
+    private async getNextPageUrl(page: Page, source: SourceConfig, currentPage: number): Promise<string | null> {
         if (currentPage >= source.maxPages) {
             return null;
         }
 
-        // For arXiv search, we can construct the next page URL directly
-        if (source.name === 'arXiv') {
-            const url = new URL(source.url);
-            const start = currentPage * 50;
-            url.searchParams.set('start', start.toString());
-            return url.toString();
-        }
-
-        // For other sources, try to find the next page link
+        // If nextPage selector is not defined, we can't find the next page
         if (!source.selectors.nextPage) {
             return null;
         }
 
-        const hasNextPage = await page.evaluate((selector: string) => {
-            const nextPageElement = document.querySelector(selector);
-            return nextPageElement !== null;
-        }, source.selectors.nextPage).catch(() => false);
-
-        if (!hasNextPage) {
+        try {
+            // Check if we have a next page button
+            const hasNextPage = await page.evaluate((selector) => {
+                const nextButton = document.querySelector(selector) as HTMLAnchorElement;
+                return nextButton && nextButton.href ? true : false;
+            }, source.selectors.nextPage).catch(() => false);
+            
+            if (!hasNextPage) {
+                return null;
+            }
+            
+            // Get the next page URL
+            const nextPageUrl = await page.evaluate((selector) => {
+                const nextButton = document.querySelector(selector) as HTMLAnchorElement;
+                return nextButton ? nextButton.href : null;
+            }, source.selectors.nextPage);
+            
+            return nextPageUrl;
+        } catch (error) {
+            console.error('Error getting next page URL:', error);
             return null;
         }
-
-        const nextPageUrl = await page.evaluate((selector: string) => {
-            const nextPageElement = document.querySelector(selector) as HTMLAnchorElement | null;
-            return nextPageElement?.href || null;
-        }, source.selectors.nextPage);
-
-        return nextPageUrl;
     }
 
     async crawl(): Promise<void> {
         try {
             this.isClosing = false;
             this.totalPapersFound = 0;
-            await this.ensureBrowser();
+            await this.initialize();
 
             // Filter sources based on selection if provided
             const sourcesToCrawl = this.config.selectedSources 
@@ -480,15 +461,27 @@ export class PaperCrawler {
                                 let newPapersFound = 0;
 
                                 for (const paperData of papers) {
-                                    if (this.matchesFilters(paperData)) {
-                                        const paper = new Paper(paperData);
-                                        await this.savePaper(paper);
-                                        newPapersFound++;
-                                        this.totalPapersFound++;
-
-                                        if (this.totalPapersFound >= this.targetPapers) {
-                                            console.log(`Reached target papers (${this.targetPapers})`);
-                                            break;
+                                    if (this.shouldProcessPaper(paperData)) {
+                                        try {
+                                            // If the abstract is too short/missing and we have a URL, try to fetch it
+                                            if ((!paperData.abstract || paperData.abstract === 'Abstract not available' || paperData.abstract.length < 50) && paperData.url) {
+                                                paperData.abstract = await this.fetchAbstract(paperData.url, source);
+                                            }
+                                            
+                                            const paper = new Paper(paperData);
+                                            paper._id = new ObjectId();
+                                            await this.savePaper(paper);
+                                            this.papersProcessed.add(paper.doi);
+                                            
+                                            newPapersFound++;
+                                            
+                                            if (this.totalPapersFound >= this.targetPapers) {
+                                                console.log(`Reached target papers (${this.targetPapers})`);
+                                                break;
+                                            }
+                                        } catch (error) {
+                                            console.error(`Error processing paper ${paperData.title}:`, error);
+                                            continue;
                                         }
                                     }
                                 }
@@ -504,7 +497,7 @@ export class PaperCrawler {
                                 }
                                 currentUrl = nextUrl;
                                 this.currentPage++;
-                                await delay(source.rateLimit ? (60000 / source.rateLimit) : 1000);
+                                await this.applyRateLimit(source);
                             } else {
                                 break;
                             }
@@ -547,6 +540,7 @@ export class PaperCrawler {
         try {
             console.log(`Attempting to save paper: ${paper.title}`);
             await this.paperRepository.save(paper);
+            this.totalPapersFound++;
             console.log(`Saved paper: ${paper.title}`);
         } catch (error) {
             console.error(`Error saving paper ${paper.title}:`, error);
@@ -554,33 +548,39 @@ export class PaperCrawler {
         }
     }
 
-    private matchesFilters(paper: ExtractedData): boolean {
-        const filters = this.config.filters;
-        if (!filters) return true;
-
-        // Date range filter
-        if (filters.dateRange && paper.publicationDate) {
-            const date = new Date(paper.publicationDate);
-            if (date < filters.dateRange.start || date > filters.dateRange.end) {
-                return false;
-            }
+    private shouldProcessPaper(paper: ExtractedData): boolean {
+        // Skip already processed papers
+        if (this.papersProcessed.has(paper.doi)) {
+            return false;
         }
 
-        // Keywords filter
-        if (filters.keywords?.length && paper.keywords?.length) {
-            if (!filters.keywords.some(keyword => 
-                paper.keywords!.some(k => k.toLowerCase().includes(keyword.toLowerCase()))
-            )) {
-                return false;
+        // Apply filters if configured
+        if (this.config.filters) {
+            // Date range filter
+            if (this.config.filters.dateRange && paper.publicationDate) {
+                const date = new Date(paper.publicationDate);
+                if (date < this.config.filters.dateRange.start || date > this.config.filters.dateRange.end) {
+                    return false;
+                }
             }
-        }
 
-        // Categories filter
-        if (filters.categories?.length && paper.categories?.length) {
-            if (!filters.categories.some(category =>
-                paper.categories!.some(c => c.toLowerCase() === category.toLowerCase())
-            )) {
-                return false;
+            // Keywords filter
+            if (this.config.filters.keywords?.length) {
+                const lowerContent = (paper.title + ' ' + paper.abstract).toLowerCase();
+                if (!this.config.filters.keywords.some(keyword => 
+                    lowerContent.includes(keyword.toLowerCase())
+                )) {
+                    return false;
+                }
+            }
+
+            // Categories filter
+            if (this.config.filters.categories?.length && paper.categories?.length) {
+                if (!this.config.filters.categories.some(category =>
+                    paper.categories!.some(c => c.toLowerCase().includes(category.toLowerCase()))
+                )) {
+                    return false;
+                }
             }
         }
 
@@ -628,7 +628,6 @@ export class PaperCrawler {
         }
     }
 
-    // Add method to get current status
     public getStatus() {
         return {
             isRunning: !this.isClosing,
@@ -639,105 +638,60 @@ export class PaperCrawler {
         };
     }
 
-    private async navigateToPage(url: string): Promise<void> {
-        if (!this.page) {
-            throw new Error('Page not initialized');
+    private async waitForSelector(page: Page, selector: string, timeout = 30000, visible = true): Promise<void> {
+        let retries = 0;
+        const maxRetries = 3;
+        
+        while (retries < maxRetries) {
+            try {
+                await page.waitForSelector(selector, { timeout, visible });
+                return;
+            } catch (error) {
+                retries++;
+                console.log(`Selector "${selector}" not found, retry ${retries}/${maxRetries}`);
+                if (retries >= maxRetries) throw error;
+                await delay(2000);
+            }
         }
+    }
+
+    private async applyRateLimit(source: SourceConfig): Promise<void> {
+        const rateLimit = source.rateLimit || 2; // Default to 2 requests per minute
+        const baseDelay = Math.floor(60000 / rateLimit);
+        const jitter = Math.floor(Math.random() * 3000); // Random delay between 0-3s
+        await delay(baseDelay + jitter);
+    }
+
+    private async fetchAbstract(url: string, source: SourceConfig): Promise<string> {
         try {
-            await this.page.goto(url, {
+            console.log(`Fetching abstract from ${url}`);
+            const browser = await this.ensureBrowser();
+            const page = await this.setupPage(browser, source);
+            
+            await page.goto(url, { 
                 waitUntil: ['networkidle0', 'domcontentloaded'],
-                timeout: 30000
+                timeout: 60000
             });
             
-            // Wait for key elements to be present
-            await this.page.waitForFunction(() => {
-                const content = document.body.textContent;
-                return content && content.length > 1000;
-            }, { timeout: 20000 });
+            await delay(5000); // Wait for content to load
             
-            // Add random delay to avoid rate limiting
-            await delay(Math.floor(Math.random() * 2000 + 1000));
-        } catch (error: unknown) {
-            if (error instanceof Error) {
-                console.error(`Navigation failed: ${error.message}`);
+            // Try to locate the abstract
+            try {
+                await this.waitForSelector(page, source.selectors.abstract, 30000, true);
+            } catch (error) {
+                console.log(`Abstract selector not found at ${url}`);
             }
-            throw error;
-        }
-    }
-
-    private async getAuthors(article: ElementHandle<Element>, config: SourceConfig): Promise<string[]> {
-        const authorText = await this.getTextContent(article, config.selectors.authors);
-        return authorText?.split(',').map(a => a.trim()) || [];
-    }
-
-    private async getDOI(article: ElementHandle<Element>, config: SourceConfig): Promise<string> {
-        const doiText = await this.getTextContent(article, config.selectors.doi);
-        if (!doiText) return '';
-        const match = doiText.match(new RegExp(config.patterns?.doi || ''));
-        return match ? match[1] : doiText;
-    }
-
-    private async getURL(article: ElementHandle<Element>, config: SourceConfig): Promise<string> {
-        const el = await article.$(config.selectors.url);
-        if (!el) return '';
-        const href = await el.evaluate(node => node.getAttribute('href'));
-        if (!href) return '';
-        return href.startsWith('http') ? href : new URL(href, 'https://arxiv.org').toString();
-    }
-
-    private async getDate(article: ElementHandle<Element>, config: SourceConfig): Promise<Date | undefined> {
-        const dateText = await this.getTextContent(article, config.selectors.date || '');
-        if (!dateText) return undefined;
-        const match = dateText.match(new RegExp(config.patterns?.date || ''));
-        return match ? new Date(match[1]) : undefined;
-    }
-
-    private async getCategories(article: ElementHandle<Element>, config: SourceConfig): Promise<string[]> {
-        const categoryText = await this.getTextContent(article, config.selectors.categories || '');
-        return categoryText?.split(',').map(c => c.trim()) || [];
-    }
-
-    private async extractPaperData(article: ElementHandle<Element>, config: SourceConfig): Promise<Paper | null> {
-        try {
-            const title = await this.getTextContent(article, config.selectors.title);
-            if (!title) return null;
-
-            const abstract = await this.getTextContent(article, config.selectors.abstract);
-            const authors = await this.getAuthors(article, config);
-            const doi = await this.getDOI(article, config);
-            const url = await this.getURL(article, config);
-            const date = await this.getDate(article, config);
-            const categories = await this.getCategories(article, config);
-
-            const paper = new Paper({
-                title: title.trim(),
-                abstract: abstract?.trim() || '',
-                authors,
-                doi,
-                url,
-                publicationDate: date || new Date(),
-                categories,
-                isProcessed: false,
-                createdAt: new Date(),
-                updatedAt: new Date()
-            });
-            paper._id = new ObjectId();
-            return paper;
-        } catch (error: unknown) {
-            if (error instanceof Error) {
-                console.error(`Error extracting paper data: ${error.message}`);
-            }
-            return null;
-        }
-    }
-
-    private async getTextContent(element: ElementHandle<Element>, selector: string): Promise<string | null> {
-        try {
-            const el = await element.$(selector);
-            if (!el) return null;
-            return await el.evaluate(node => node.textContent?.trim() || '');
-        } catch {
-            return null;
+            
+            const abstract = await page.evaluate((selector) => {
+                const element = document.querySelector(selector);
+                return element?.textContent?.trim() || 'Abstract not available';
+            }, source.selectors.abstract);
+            
+            await page.close();
+            return abstract;
+        } catch (error) {
+            console.error('Error fetching abstract:', error);
+            return 'Failed to fetch abstract';
         }
     }
 } 

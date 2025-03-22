@@ -51,56 +51,30 @@ const startHandler = async (req: Request, res: Response): Promise<void> => {
             await AppDataSource.initialize();
         }
 
-        const { maxPapers = 50, sources = ['PubMed', 'arXiv'] } = req.body;
+        const { maxPapers = 50, sources = ['PubMed'] } = req.body;
 
         const config = {
             sources: sources.map((name: string) => ({
                 name,
-                url: name === 'arXiv' 
-                    ? 'https://arxiv.org/search/advanced?advanced=&terms-0-operator=AND&terms-0-term=synthetic+biology+machine+learning+bioinformatics&terms-0-field=all&classification-physics_archives=all&classification-include_cross_list=include&date-filter_by=all_dates&date-year=&date-from_date=&date-to_date=&date-date_type=submitted_date&abstracts=show&size=50&order=-announced_date_first' 
-                    : 'https://pubmed.ncbi.nlm.nih.gov/?term=(synthetic+biology+OR+machine+learning+OR+bioinformatics)&sort=date&size=100',
+                url: 'https://pubmed.ncbi.nlm.nih.gov/?term=(synthetic+biology+OR+machine+learning+OR+bioinformatics)&sort=date&size=100',
                 selectors: {
-                    title: name === 'arXiv' 
-                        ? '.title' 
-                        : 'a.docsum-title',
-                    abstract: name === 'arXiv' 
-                        ? '.abstract-full' 
-                        : 'div.full-view-snippet',
-                    authors: name === 'arXiv' 
-                        ? '.authors' 
-                        : 'span.docsum-authors',
-                    doi: name === 'arXiv' 
-                        ? '.list-title' 
-                        : 'span.docsum-pmid',
-                    date: name === 'arXiv' 
-                        ? '.submitted-date' 
-                        : 'span.docsum-journal-citation',
-                    categories: name === 'arXiv' 
-                        ? '.primary-subject' 
-                        : 'div.docsum-subjects',
-                    keywords: name === 'arXiv' 
-                        ? '.subjects' 
-                        : 'div.keywords',
-                    nextPage: name === 'arXiv'
-                        ? '.pagination-next'
-                        : 'a.next-page',
-                    articleContainer: name === 'arXiv'
-                        ? '.arxiv-result'
-                        : 'article.full-docsum',
-                    url: name === 'arXiv'
-                        ? 'a.list-title'
-                        : 'a.docsum-title'
+                    title: 'a.docsum-title',
+                    abstract: 'div.full-view-snippet',
+                    authors: 'span.docsum-authors',
+                    doi: 'span.docsum-pmid',
+                    date: 'span.docsum-journal-citation',
+                    categories: 'div.docsum-subjects',
+                    keywords: 'div.keywords',
+                    nextPage: 'a.next-page',
+                    articleContainer: 'article.full-docsum',
+                    url: 'a.docsum-title'
                 },
                 patterns: {
                     title: null,
-                    doi: name === 'arXiv'
-                        ? 'arXiv:([\\d\\.v]+)'
-                        : 'PMID:\\s*(\\d+)',
-                    date: name === 'arXiv'
-                        ? 'Submitted\\s+([^\\s]+)'
-                        : '(\\d{4})\\s+[A-Za-z]+'
+                    doi: 'PMID:\\s*(\\d+)',
+                    date: '(\\d{4})\\s+[A-Za-z]+'
                 },
-                rateLimit: name === 'arXiv' ? 1 : 2,
+                rateLimit: 2,
                 maxPages: 10,
                 extraHeaders: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
@@ -118,7 +92,7 @@ const startHandler = async (req: Request, res: Response): Promise<void> => {
             })),
             filters: {
                 keywords: ['synthetic biology', 'machine learning', 'bioinformatics', 'computational biology'],
-                categories: ['q-bio', 'cs.AI', 'Research Article', 'Journal Article']
+                categories: ['Research Article', 'Journal Article']
             },
             retryOptions: {
                 maxRetries: 3,

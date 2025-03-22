@@ -17,14 +17,13 @@ const BACKEND_URL = 'http://localhost:3002';
 export function CrawlerControls({ onStatusChange }: CrawlerControlsProps) {
     const [status, setStatus] = useState<CrawlerStatus | null>(null);
     const [maxPapers, setMaxPapers] = useState(50);
-    const [selectedSources, setSelectedSources] = useState<string[]>(['PubMed', 'arXiv']);
+    const [selectedSources, setSelectedSources] = useState<string[]>(['PubMed']);
     const [error, setError] = useState<string | null>(null);
     const [isResetting, setIsResetting] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
 
     const sources = [
-        { id: 'PubMed', name: 'PubMed' },
-        { id: 'arXiv', name: 'arXiv' }
+        { id: 'PubMed', name: 'PubMed' }
     ];
 
     useEffect(() => {

@@ -62,26 +62,31 @@ export class PaperController {
             const config: CrawlerConfig = {
                 sources: [
                     {
-                        name: 'arXiv',
-                        url: 'https://arxiv.org/list/q-bio/recent',
+                        name: 'PubMed',
+                        url: 'https://pubmed.ncbi.nlm.nih.gov/?term=(synthetic+biology+OR+machine+learning+OR+bioinformatics)&sort=date&size=100',
                         selectors: {
-                            title: 'h2.title',
-                            abstract: '.abstract',
-                            authors: '.authors',
-                            doi: '.doi',
-                            articleContainer: 'li.arxiv-result',
-                            url: '.list-title a'
+                            title: '.docsum-title',
+                            abstract: '.abstract-content p, .full-view-snippet',
+                            authors: '.docsum-authors',
+                            doi: '.docsum-pmid',
+                            date: '.docsum-journal-citation',
+                            articleContainer: 'article.full-docsum',
+                            url: '.docsum-title'
                         },
                         patterns: {
                             title: null,
-                            doi: 'arXiv:([\\d\\.v]+)',
-                            date: 'Submitted\\s+([^\\s]+)'
+                            doi: 'PMID:\\s*(\\d+)',
+                            date: '(\\d{4})\\s+[A-Za-z]+'
                         },
-                        rateLimit: 2,
-                        maxPages: 1
+                        rateLimit: 3,
+                        maxPages: 10
                     }
                 ],
-                maxPapers: 50
+                maxPapers: 50,
+                retryOptions: {
+                    maxRetries: 3,
+                    delayMs: 5000
+                }
             };
             
             this.crawler = new PaperCrawler(this.paperRepository, config);
