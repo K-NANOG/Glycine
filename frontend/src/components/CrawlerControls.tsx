@@ -263,20 +263,13 @@ export function CrawlerControls({ onStatusChange }: CrawlerControlsProps) {
 
                     {/* Status Display */}
                     {status && status.isRunning && (
-                        <div className="space-y-2">
+                        <div className="space-y-2 p-3 bg-white/[0.03] rounded-md">
                             <div className="text-sm text-white/60">
-                                Currently crawling: {status.currentSource}
+                                Currently crawling: <span className="text-white/80 font-medium">{status.currentSource}</span>
                             </div>
-                            <div className="text-sm text-white/60">
-                                Page {status.currentPage} | Found {status.papersFound} of {status.targetPapers} papers
-                            </div>
-                            <div className="relative pt-1">
-                                <div className="overflow-hidden h-2 text-xs flex rounded bg-white/[0.03]">
-                                    <div
-                                        style={{ width: `${(status.papersFound / status.targetPapers) * 100}%` }}
-                                        className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-blue-500/50"
-                                    />
-                                </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 bg-green-400/80 rounded-full animate-pulse"></div>
+                                <span className="text-sm text-white/60">Crawler is running</span>
                             </div>
                         </div>
                     )}

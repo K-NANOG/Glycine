@@ -126,12 +126,6 @@ export default function Home() {
                         ))
                     )}
                 </div>
-
-                {papers.length > 0 && (
-                    <div className="mt-8 text-center text-white/40 font-light">
-                        Found {papers.length} papers
-                    </div>
-                )}
             </div>
         </div>
     );

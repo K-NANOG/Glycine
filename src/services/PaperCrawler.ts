@@ -28,6 +28,7 @@ export interface CrawlerConfig {
         rateLimit?: number;
         maxPages: number;
         extraHeaders?: Record<string, string>;
+        postProcess?: (data: ExtractedData) => ExtractedData;
     }[];
     filters?: {
         dateRange?: {
@@ -460,12 +461,17 @@ export class PaperCrawler {
                                 emptyPagesCount = 0;
                                 let newPapersFound = 0;
 
-                                for (const paperData of papers) {
+                                for (let paperData of papers) {
                                     if (this.shouldProcessPaper(paperData)) {
                                         try {
                                             // If the abstract is too short/missing and we have a URL, try to fetch it
                                             if ((!paperData.abstract || paperData.abstract === 'Abstract not available' || paperData.abstract.length < 50) && paperData.url) {
                                                 paperData.abstract = await this.fetchAbstract(paperData.url, source);
+                                            }
+                                            
+                                            // Before creating the Paper object, apply any source-specific post-processing
+                                            if (paperData && source.postProcess && typeof source.postProcess === 'function') {
+                                                paperData = source.postProcess(paperData);
                                             }
                                             
                                             const paper = new Paper(paperData);
