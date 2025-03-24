@@ -4,6 +4,7 @@ import { PaperCrawler, CrawlerConfig } from '../services/PaperCrawler';
 import { mockPapers } from '../data/mockPapers';
 import { AppDataSource } from '../config/database';
 import { ObjectId } from 'mongodb';
+import { registerCrawlers } from '../crawlers/register-crawlers';
 
 export class PaperController {
     private static crawler: PaperCrawler;
@@ -22,6 +23,10 @@ export class PaperController {
                 await AppDataSource.initialize();
                 console.log("Database connection initialized");
             }
+
+            // Register all available crawlers
+            registerCrawlers();
+            console.log("Crawlers registered successfully");
 
             // Verify entity registration
             const registeredEntities = AppDataSource.entityMetadatas;

@@ -9,7 +9,7 @@ export interface IBrowserAdapter {
     initialize(): Promise<void>;
     setup(options?: BrowserSetupOptions): Promise<void>;
     navigate(url: string, options?: NavigationOptions): Promise<void>;
-    extract(selectors: Selectors): Promise<ExtractedData>;
+    extract(selectors: Selectors): Promise<ExtractedData[]>;
     waitForSelector(selector: string, options?: WaitOptions): Promise<void>;
     evaluateSelector(selector: string): Promise<boolean>;
     getNextPageUrl(selector: string): Promise<string | null>;

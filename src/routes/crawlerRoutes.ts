@@ -51,47 +51,84 @@ const startHandler = async (req: Request, res: Response): Promise<void> => {
             await AppDataSource.initialize();
         }
 
-        const { maxPapers = 50, sources = ['PubMed'] } = req.body;
+        const { maxPapers = 50, sources = ['PubMed'], keywords = [] } = req.body;
+
+        // Use the provided keywords or fallback to default search terms
+        const searchTerms = keywords.length > 0 
+            ? keywords.join(' OR ')
+            : 'synthetic biology OR machine learning OR bioinformatics';
+        
+        console.log('Search terms for crawler:', searchTerms);
+        console.log('Keywords received:', keywords);
 
         const config = {
-            sources: sources.map((name: string) => ({
-                name,
-                url: 'https://pubmed.ncbi.nlm.nih.gov/?term=(synthetic+biology+OR+machine+learning+OR+bioinformatics)&sort=date&size=100',
-                selectors: {
-                    title: 'a.docsum-title',
-                    abstract: 'div.full-view-snippet',
-                    authors: 'span.docsum-authors',
-                    doi: 'span.docsum-pmid',
-                    date: 'span.docsum-journal-citation',
-                    categories: 'div.docsum-subjects',
-                    keywords: 'div.keywords',
-                    nextPage: 'a.next-page',
-                    articleContainer: 'article.full-docsum',
-                    url: 'a.docsum-title'
-                },
-                patterns: {
-                    title: null,
-                    doi: 'PMID:\\s*(\\d+)',
-                    date: '(\\d{4})\\s+[A-Za-z]+'
-                },
-                rateLimit: 2,
-                maxPages: 10,
-                extraHeaders: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                    'Accept-Language': 'en-US,en;q=0.5',
-                    'Connection': 'keep-alive',
-                    'Cache-Control': 'no-cache',
-                    'Pragma': 'no-cache',
-                    'Upgrade-Insecure-Requests': '1',
-                    'Sec-Fetch-Dest': 'document',
-                    'Sec-Fetch-Mode': 'navigate',
-                    'Sec-Fetch-Site': 'none',
-                    'Sec-Fetch-User': '?1'
+            sources: sources.map((name: string) => {
+                if (name === 'BioRxiv/MedRxiv') {
+                    return {
+                        name,
+                        url: `https://www.biorxiv.org/search/${encodeURIComponent(searchTerms)}`,
+                        selectors: {
+                            articleContainer: '.highwire-article-list-item',
+                            title: '.highwire-cite-title a',
+                            abstract: '.highwire-cite-snippet',
+                            authors: '.highwire-citation-authors',
+                            doi: '.highwire-cite-metadata-doi',
+                            date: '.highwire-cite-metadata-journal',
+                            categories: '.highwire-citation-categories',
+                            keywords: '.highwire-keywords-wrapper',
+                            nextPage: '.pager-next a',
+                            url: '.highwire-cite-title a'
+                        },
+                        patterns: {
+                            title: null,
+                            doi: 'doi:\\/\\/([\\w\\.\\-\\/]+)',
+                            date: '\\(([\\w\\s]+)\\)'
+                        },
+                        rateLimit: 1,
+                        maxPages: 5
+                    };
+                } else {
+                    // PubMed config
+                    return {
+                        name,
+                        url: `https://pubmed.ncbi.nlm.nih.gov/?term=${encodeURIComponent(searchTerms)}&sort=date&size=100`,
+                        selectors: {
+                            title: 'a.docsum-title',
+                            abstract: 'div.full-view-snippet',
+                            authors: 'span.docsum-authors',
+                            doi: 'span.docsum-pmid',
+                            date: 'span.docsum-journal-citation',
+                            categories: 'div.docsum-subjects',
+                            keywords: 'div.keywords',
+                            nextPage: 'a.next-page',
+                            articleContainer: 'article.full-docsum',
+                            url: 'a.docsum-title'
+                        },
+                        patterns: {
+                            title: null,
+                            doi: 'PMID:\\s*(\\d+)',
+                            date: '(\\d{4})\\s+[A-Za-z]+'
+                        },
+                        rateLimit: 2,
+                        maxPages: 10,
+                        extraHeaders: {
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                            'Accept-Language': 'en-US,en;q=0.5',
+                            'Connection': 'keep-alive',
+                            'Cache-Control': 'no-cache',
+                            'Pragma': 'no-cache',
+                            'Upgrade-Insecure-Requests': '1',
+                            'Sec-Fetch-Dest': 'document',
+                            'Sec-Fetch-Mode': 'navigate',
+                            'Sec-Fetch-Site': 'none',
+                            'Sec-Fetch-User': '?1'
+                        }
+                    };
                 }
-            })),
+            }),
             filters: {
-                keywords: ['synthetic biology', 'machine learning', 'bioinformatics', 'computational biology'],
+                keywords: keywords.length > 0 ? keywords : ['synthetic biology', 'machine learning', 'bioinformatics', 'computational biology'],
                 categories: ['Research Article', 'Journal Article']
             },
             retryOptions: {
