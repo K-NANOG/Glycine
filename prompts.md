@@ -5,7 +5,7 @@ So I've already started to build a dynamically reconfigurable web crawler progra
 
 3. I have to find the research gaps by myself instead of having the papers that are the most relevant being preprocessed and the research gaps suggested to me.
 
-4. There is no centralisations of the plateforms I would like to integrate (google scholar, pubmed, rss feeds, igem projects, github projects) So each transition between different tools create an additional layer of friction which I would like to alleviate with glycine.
+4. There is no centralisations of the plateforms I would like to integrate (google scholar, pubmed, rss feeds, igem projects, github projects, arxiv, researchgate, bioRxiv/medRxiv) So each transition between different tools create an additional layer of friction which I would like to alleviate with glycine. I must also crawl previously existing aggregators like CORE, DOAJ (Directory of Open Access Journals) and OpenAlex.
 
 5. The interface of scientific research pleteforms is not intuitive, beautiful or enjoyable, I want to be aesthetically pleased when going through research. This is why I built this interface with my esthetical preference in mind, using a glass morphic style and minimalist style, and building the whole web app using Next.js.
 

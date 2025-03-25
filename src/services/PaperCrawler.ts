@@ -28,7 +28,15 @@ export interface CrawlerConfig {
         rateLimit?: number;
         maxPages: number;
         extraHeaders?: Record<string, string>;
-        postProcess?: (data: ExtractedData) => ExtractedData;
+        postProcess?: (data: ExtractedData, page?: Page | null) => Promise<ExtractedData> | ExtractedData;
+        isRssFeed?: boolean;
+        feeds?: Array<{
+            url: string;
+            name: string;
+            status: string;
+            lastFetched?: Date;
+            errorMessage?: string;
+        }>;
     }[];
     filters?: {
         dateRange?: {
@@ -407,9 +415,14 @@ export class PaperCrawler {
             this.totalPapersFound = 0;
             await this.initialize();
 
-            // Filter sources based on selection if provided
-            const sourcesToCrawl = this.config.selectedSources 
-                ? this.config.sources.filter(s => this.config.selectedSources?.includes(s.name))
+            // Filter sources based on selection if provided, with better error handling
+            const selectedSources = this.config.selectedSources || [];
+            const sourcesToCrawl = selectedSources.length > 0
+                ? this.config.sources.filter(s => {
+                    // Defensively check that s.name exists and is in selectedSources
+                    return s && s.name && typeof s.name === 'string' && 
+                           selectedSources.includes(s.name);
+                  })
                 : this.config.sources;
 
             // Sort sources to ensure PubMed comes first if selected
@@ -419,12 +432,50 @@ export class PaperCrawler {
                 return 0;
             });
 
+            // Import the RSS Feed crawler dynamically to avoid circular dependencies
+            const { RSSFeedCrawler } = await import('../crawlers/implementations/rss-feed-crawler');
+            let rssFeedCrawler: any = null;
+
             for (const source of sourcesToCrawl) {
                 if (this.isClosing) break;
 
                 try {
                     this.currentSource = source.name;
                     console.log(`Starting to crawl ${source.name}`);
+                    
+                    // Check if this is an RSS feed source
+                    if ('isRssFeed' in source && source.isRssFeed === true) {
+                        console.log(`Processing RSS feed source: ${source.name}`);
+                        
+                        // Create the RSS feed crawler if it doesn't exist yet
+                        if (!rssFeedCrawler) {
+                            const { PuppeteerAdapter } = await import('../crawlers/browser/puppeteer-adapter');
+                            const browserAdapter = new PuppeteerAdapter();
+                            rssFeedCrawler = new RSSFeedCrawler(browserAdapter, this.paperRepository);
+                            
+                            // Set the RSS feeds from the source configuration
+                            if (source.feeds && Array.isArray(source.feeds)) {
+                                console.log(`Setting ${source.feeds.length} RSS feeds`);
+                                rssFeedCrawler.setFeeds(source.feeds);
+                            } else {
+                                console.warn('No feeds provided in the RSS feed source configuration');
+                            }
+                        }
+                        
+                        // Actually call the RSS feed crawler's crawl method with the config
+                        console.log('Invoking specialized RSS feed crawler');
+                        await rssFeedCrawler.crawl(this.config);
+                        
+                        // Update our paper count from the RSS feed crawler
+                        if (rssFeedCrawler.status && typeof rssFeedCrawler.status.papersFound === 'number') {
+                            this.totalPapersFound += rssFeedCrawler.status.papersFound;
+                            console.log(`Added ${rssFeedCrawler.status.papersFound} papers from RSS feeds, total: ${this.totalPapersFound}`);
+                        }
+                        
+                        continue;
+                    }
+                    
+                    // For standard web sources, continue with browser/page setup
                     const browser = await this.ensureBrowser();
                     const page = await this.setupPage(browser, source);
 
@@ -471,7 +522,16 @@ export class PaperCrawler {
                                             
                                             // Before creating the Paper object, apply any source-specific post-processing
                                             if (paperData && source.postProcess && typeof source.postProcess === 'function') {
-                                                paperData = source.postProcess(paperData);
+                                                try {
+                                                    // Get the page (may be null)
+                                                    const page = this.page;
+                                                    
+                                                    // Always await the result, whether it's a Promise or not
+                                                    // This handles both async and non-async functions uniformly
+                                                    paperData = await Promise.resolve(source.postProcess(paperData, page));
+                                                } catch (error) {
+                                                    console.error('Error in postProcess:', error);
+                                                }
                                             }
                                             
                                             const paper = new Paper(paperData);
@@ -556,7 +616,13 @@ export class PaperCrawler {
 
     private shouldProcessPaper(paper: ExtractedData): boolean {
         // Skip already processed papers
+        if (!paper.doi) {
+            console.log('Skipping paper with no DOI');
+            return false;
+        }
+        
         if (this.papersProcessed.has(paper.doi)) {
+            console.log(`Skipping already processed paper with DOI: ${paper.doi}`);
             return false;
         }
 
@@ -564,32 +630,50 @@ export class PaperCrawler {
         if (this.config.filters) {
             // Date range filter
             if (this.config.filters.dateRange && paper.publicationDate) {
-                const date = new Date(paper.publicationDate);
-                if (date < this.config.filters.dateRange.start || date > this.config.filters.dateRange.end) {
-                    return false;
+                try {
+                    const date = new Date(paper.publicationDate);
+                    if (date < this.config.filters.dateRange.start || date > this.config.filters.dateRange.end) {
+                        console.log(`Skipping paper outside date range: ${paper.title}`);
+                        return false;
+                    }
+                } catch (error) {
+                    console.warn(`Error parsing date for paper ${paper.title}:`, error);
+                    // Continue processing even if date parsing fails
                 }
             }
 
             // Keywords filter
-            if (this.config.filters.keywords?.length) {
-                const lowerContent = (paper.title + ' ' + paper.abstract).toLowerCase();
-                if (!this.config.filters.keywords.some(keyword => 
-                    lowerContent.includes(keyword.toLowerCase())
-                )) {
+            if (this.config.filters.keywords && this.config.filters.keywords.length > 0) {
+                const lowerContent = `${paper.title || ''} ${paper.abstract || ''}`.toLowerCase();
+                
+                // Only apply keyword filter if we have content to search
+                if (lowerContent.trim() !== '' && !this.config.filters.keywords.some(keyword => {
+                    if (!keyword) return false;
+                    return lowerContent.includes(keyword.toLowerCase());
+                })) {
+                    console.log(`Skipping paper that doesn't match keywords: ${paper.title}`);
                     return false;
                 }
             }
 
-            // Categories filter
-            if (this.config.filters.categories?.length && paper.categories?.length) {
-                if (!this.config.filters.categories.some(category =>
-                    paper.categories!.some(c => c.toLowerCase().includes(category.toLowerCase()))
-                )) {
+            // Categories filter - only apply if paper has categories
+            if (this.config.filters.categories && 
+                this.config.filters.categories.length > 0 && 
+                paper.categories && 
+                paper.categories.length > 0) {
+                
+                if (!this.config.filters.categories.some(filterCategory => {
+                    if (!filterCategory) return false;
+                    return paper.categories!.some(paperCategory => 
+                        paperCategory.toLowerCase().includes(filterCategory.toLowerCase())
+                    );
+                })) {
+                    console.log(`Skipping paper that doesn't match categories: ${paper.title}`);
                     return false;
                 }
             }
         }
-
+        
         return true;
     }
 
@@ -670,9 +754,41 @@ export class PaperCrawler {
 
     private async fetchAbstract(url: string, source: SourceConfig): Promise<string> {
         try {
+            // Don't start a new browser if we're closing
+            if (this.isClosing) {
+                console.log('Crawler is closing, skipping abstract fetch');
+                return 'Abstract fetch skipped - crawler is shutting down';
+            }
+            
             console.log(`Fetching abstract from ${url}`);
-            const browser = await this.ensureBrowser();
-            const page = await this.setupPage(browser, source);
+            
+            // Check if this is an RSS feed source (which has a different structure)
+            if ('feeds' in source) {
+                console.log('Skipping abstract fetch for RSS feed item - abstract already included in feed');
+                return 'Abstract included in RSS feed';
+            }
+            
+            // Check if we have valid selectors
+            if (!source.selectors || !source.selectors.abstract) {
+                console.log('No abstract selectors available for this source, skipping abstract fetch');
+                return 'No abstract selectors available';
+            }
+            
+            // Use existing browser if available or create a new one
+            let browser = this.browser;
+            let page;
+            
+            if (!browser || !browser.isConnected()) {
+                // Only create a new browser if we're not in the closing state
+                if (this.isClosing) {
+                    return 'Abstract fetch skipped - crawler is shutting down';
+                }
+                browser = await this.ensureBrowser();
+                page = await this.setupPage(browser, source);
+            } else {
+                // Use existing browser but create a new page
+                page = await this.setupPage(browser, source);
+            }
             
             await page.goto(url, { 
                 waitUntil: ['networkidle0', 'domcontentloaded'],

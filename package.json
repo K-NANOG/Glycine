@@ -21,6 +21,7 @@
     "mongodb": "^6.4.0",
     "puppeteer": "^22.3.0",
     "reflect-metadata": "^0.2.1",
+    "rss-parser": "^3.13.0",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
     "typeorm": "^0.3.20",

@@ -106,9 +106,39 @@ export function TagsSection({
 
   // Handle tag removal
   const handleTagRemove = (tagId: string) => {
-    removeTag(tagId);
-    // Also remove from selected tags if present
-    setLocalSelectedTagIds(prev => prev.filter(id => id !== tagId));
+    // Prevent rapid repeated clicks
+    if (isUpdatingRef.current) {
+      return;
+    }
+    
+    isUpdatingRef.current = true;
+    
+    try {
+      console.log(`Removing tag with ID: ${tagId}`);
+      
+      // First update local state
+      setLocalSelectedTagIds(prev => prev.filter(id => id !== tagId));
+      
+      // Call remove tag from global context
+      removeTag(tagId);
+      
+      // If we need to notify parent, do it with updated list of tag names
+      if (onTagsChange) {
+        const updatedTags = tags
+          .filter(tag => tag.id !== tagId)
+          .filter(tag => localSelectedTagIds.includes(tag.id))
+          .map(tag => tag.name);
+        
+        onTagsChange(updatedTags);
+      }
+    } catch (error) {
+      console.error("Error removing tag:", error);
+    } finally {
+      // Ensure the flag is reset in all cases
+      setTimeout(() => {
+        isUpdatingRef.current = false;
+      }, 50);
+    }
   };
 
   // Handle tag addition from input

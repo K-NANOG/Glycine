@@ -1,5 +1,6 @@
 import { CrawlerFactory } from './factory/crawler-factory';
 import { BioRxivMedRxivCrawler } from './implementations/biorxiv-medrxiv-crawler';
+import { RSSFeedCrawler } from './implementations/rss-feed-crawler';
 import { ICrawlerStrategy } from './base/crawler-strategy.interface';
 import { IBrowserAdapter } from './browser/browser-adapter.interface';
 import { Repository } from 'typeorm';
@@ -21,8 +22,21 @@ export function registerCrawlers() {
     }
   }
   
+  // Create a wrapper for the RSS Feed crawler
+  class RSSFeedCrawlerWrapper extends RSSFeedCrawler {
+    constructor(
+      browserAdapter: IBrowserAdapter,
+      public readonly paperRepository: Repository<Paper>
+    ) {
+      super(browserAdapter, paperRepository);
+    }
+  }
+  
   // Register the BioRxiv/MedRxiv crawler
   factory.registerCrawler('BioRxiv/MedRxiv', BioRxivMedRxivCrawlerWrapper);
+  
+  // Register the RSS Feed crawler
+  factory.registerCrawler('RSS Feeds', RSSFeedCrawlerWrapper);
   
   // Register additional crawlers here
   
@@ -61,6 +75,26 @@ export function getCrawlerConfigs() {
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
           'Accept-Language': 'en-US,en;q=0.5'
         }
+      }
+    },
+    'RSS Feeds': {
+      sourceConfig: {
+        feeds: [
+          {
+            url: 'https://www.nature.com/nature.rss',
+            name: 'Nature'
+          },
+          {
+            url: 'https://www.science.org/rss/news_current.xml',
+            name: 'Science'
+          },
+          {
+            url: 'https://www.pnas.org/action/showFeed?type=etoc&feed=rss&jc=pnas',
+            name: 'PNAS'
+          }
+        ],
+        rateLimit: 2,
+        maxFeeds: 10
       }
     }
   };

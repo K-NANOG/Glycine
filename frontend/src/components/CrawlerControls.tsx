@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { TagsSection } from './TagsSection';
+import { RSSFeedsPanel } from './RSSFeedsPanel';
 import { useTags } from '../contexts/TagContext';
 
 interface CrawlerStatus {
@@ -34,7 +35,8 @@ export function CrawlerControls({ onStatusChange }: CrawlerControlsProps) {
 
     const sources = [
         { id: 'PubMed', name: 'PubMed' },
-        { id: 'BioRxiv/MedRxiv', name: 'bioRxiv/medRxiv' }
+        { id: 'BioRxiv/MedRxiv', name: 'bioRxiv/medRxiv' },
+        { id: 'RSS Feeds', name: 'RSS Feeds' }
     ];
 
     // Load saved settings when the component mounts
@@ -218,6 +220,15 @@ export function CrawlerControls({ onStatusChange }: CrawlerControlsProps) {
                 collapsible={true}
                 className="mb-6"
             />
+            
+            {/* RSS Feeds Section - Only show if RSS Feeds source is selected */}
+            {selectedSources.includes('RSS Feeds') && (
+                <RSSFeedsPanel
+                    title="RSS Feeds"
+                    collapsible={true}
+                    className="mb-6"
+                />
+            )}
             
             {/* Crawler Controls */}
             <div className="bg-white/[0.02] backdrop-blur-xl rounded-lg border border-white/[0.05]">

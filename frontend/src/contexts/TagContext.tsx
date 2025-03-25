@@ -183,9 +183,21 @@ export const TagProvider: React.FC<TagProviderProps> = ({ children }) => {
 
   // Remove a tag by ID
   const removeTag = useCallback((id: string) => {
-    setTags(prevTags => prevTags.filter(tag => tag.id !== id));
+    console.log(`TagContext: Removing tag with ID ${id}`);
+    
+    // Update tags list first
+    setTags(prevTags => {
+      const updatedTags = prevTags.filter(tag => tag.id !== id);
+      console.log(`TagContext: Tags after removal:`, updatedTags);
+      return updatedTags;
+    });
+    
     // Also remove from selected tags if present
-    setSelectedTagIds(prev => prev.filter(tagId => tagId !== id));
+    setSelectedTagIds(prev => {
+      const updatedSelectedTags = prev.filter(tagId => tagId !== id);
+      console.log(`TagContext: Selected tags after removal:`, updatedSelectedTags);
+      return updatedSelectedTags;
+    });
   }, []);
 
   // Update an existing tag

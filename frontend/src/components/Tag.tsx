@@ -145,7 +145,10 @@ export function Tag({
   
   // Handle remove button click
   const handleRemoveClick = (e: React.MouseEvent<HTMLButtonElement>) => {
-    e.stopPropagation(); // Prevent parent onClick from firing
+    // Make sure to stop event propagation so tag's onClick doesn't fire
+    e.stopPropagation();
+    e.preventDefault();
+    
     if (onRemove) {
       onRemove();
     }
@@ -154,7 +157,7 @@ export function Tag({
   return (
     <div
       className={`${baseClasses} ${interactiveClasses} ${className}`}
-      onClick={handleClick}
+      onClick={onClick ? handleClick : undefined}
       data-tag-id={tag.id}
       data-tag-color={color}
       data-selected={selected}
@@ -179,6 +182,7 @@ export function Tag({
             transition-colors duration-200
           `}
           aria-label={`Remove ${name} tag`}
+          type="button" // Explicitly set type to prevent form submission
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
